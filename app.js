@@ -9,9 +9,20 @@ import {
   doc, setDoc, getDoc, updateDoc, collection, query, where, getDocs, addDoc, serverTimestamp 
 } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
-// --- RESERVED USERNAMES ---
+// Ambil Base Path dinamis (misal: /builder/)
+const getBasePath = () => {
+  const path = window.location.pathname;
+  const segments = path.split('/').filter(Boolean);
+  if (window.location.hostname.includes('github.io') && segments.length > 0) {
+    return `/${segments[0]}`;
+  }
+  return '';
+};
+
+const BASE_PATH = getBasePath();
+
 const RESERVED_USERNAMES = [
-  'admin', 'administrator', 'api', 'app', 'assets', 'auth', 'blog', 
+  'administrator', 'api', 'app', 'assets', 'auth', 'blog', 
   'dashboard', 'help', 'login', 'logout', 'mail', 'register', 'signup', 
   'site', 'static', 'support', 'system', 'user', 'users', 'www', 
   'official', 'security', 'billing', 'payment'
@@ -20,11 +31,16 @@ const RESERVED_USERNAMES = [
 let currentUser = null;
 let currentUserProfile = null;
 
-// --- ROUTER ENGINE (GitHub Pages SPA Compliant) ---
+// --- ROUTER ENGINE ---
 const router = async () => {
   const path = window.location.pathname;
-  // Deteksi rute /site/:username atau /repo-name/site/:username
-  const siteMatch = path.match(/\/site\/([a-zA-Z0-9_-]+)/);
+  const hash = window.location.hash || '';
+
+  // Cek apakah rute publik /site/:username dari path biasa ATAU dari hash #/site/:username
+  let siteMatch = path.match(/\/site\/([a-zA-Z0-9_-]+)/);
+  if (!siteMatch && hash.startsWith('#/site/')) {
+    siteMatch = hash.match(/#\/site\/([a-zA-Z0-9_-]+)/);
+  }
 
   if (siteMatch) {
     const targetUsername = siteMatch[1].toLowerCase();
@@ -32,7 +48,6 @@ const router = async () => {
     return;
   }
 
-  const hash = window.location.hash || '#/dashboard';
   renderNavbar();
 
   if (hash === '#/register') renderRegister();
@@ -49,8 +64,12 @@ window.addEventListener('load', () => {
   onAuthStateChanged(auth, async (user) => {
     currentUser = user;
     if (user) {
-      const snap = await getDoc(doc(db, 'users', user.uid));
-      currentUserProfile = snap.exists() ? snap.data() : null;
+      try {
+        const snap = await getDoc(doc(db, 'users', user.uid));
+        currentUserProfile = snap.exists() ? snap.data() : null;
+      } catch (err) {
+        console.error("Gagal load profile:", err);
+      }
     } else {
       currentUserProfile = null;
     }
@@ -59,12 +78,7 @@ window.addEventListener('load', () => {
 });
 
 const navigate = (path) => {
-  if (path.startsWith('/site/')) {
-    window.history.pushState({}, '', path);
-    router();
-  } else {
-    window.location.hash = path;
-  }
+  window.location.hash = path;
 };
 
 // --- AUTH GUARDS ---
@@ -89,7 +103,10 @@ const requireAdmin = async (callback) => {
 // --- NAVBAR ---
 function renderNavbar() {
   const container = document.getElementById('navbar-container');
-  if (window.location.pathname.includes('/site/')) {
+  const path = window.location.pathname;
+  const hash = window.location.hash;
+  
+  if (path.includes('/site/') || hash.startsWith('#/site/')) {
     container.innerHTML = '';
     return;
   }
@@ -154,7 +171,6 @@ function renderRegister() {
     const pass = document.getElementById('regPass').value;
     const username = document.getElementById('regUsername').value.trim().toLowerCase();
 
-    // Validasi format username
     if (!/^[a-z0-9-]{3,30}$/.test(username)) {
       alert('Username tidak valid (Gunakan 3-30 huruf kecil, angka, atau tanda -)');
       return;
@@ -166,7 +182,6 @@ function renderRegister() {
     }
 
     try {
-      // Periksa Uniqueness
       const uDoc = await getDoc(doc(db, 'usernames', username));
       if (uDoc.exists()) {
         alert('Username sudah digunakan oleh akun lain!');
@@ -176,7 +191,6 @@ function renderRegister() {
       const cred = await createUserWithEmailAndPassword(auth, email, pass);
       const uid = cred.user.uid;
 
-      // Inisialisasi Database User & Site
       await setDoc(doc(db, 'users', uid), {
         name, email, username, role: 'user', status: 'active', createdAt: serverTimestamp()
       });
@@ -186,17 +200,13 @@ function renderRegister() {
       await setDoc(doc(db, 'websites', uid), {
         ownerId: uid,
         username,
-        siteName: name + ' Official',
+        siteName: name,
         description: 'Selamat datang di website resmi kami.',
         templateId: 'umkm',
         plan: 'free',
         status: 'draft',
         published: false,
         approved: false,
-        sections: [
-          { type: 'hero', title: 'Solusi Terbaik untuk Kebutuhan Anda', subtitle: 'Kami menyediakan layanan profesional & terpercaya' },
-          { type: 'about', title: 'Tentang Kami', content: 'Bisnis kami berdedikasi melayani pelanggan sejak lama.' }
-        ],
         products: [],
         contact: { whatsapp: '', address: '' },
         createdAt: serverTimestamp(),
@@ -249,16 +259,20 @@ async function renderDashboard() {
 
   const siteDoc = await getDoc(doc(db, 'websites', currentUser.uid));
   const site = siteDoc.data() || {};
+  const username = site.username || 'admin';
 
-  const publicUrl = `${window.location.origin}/site/${site.username}`;
+  // Format URL publik lengkap dengan base path GitHub Pages
+  const publicRelativeUrl = `${BASE_PATH}/site/${username}`;
+  const publicHashUrl = `${BASE_PATH}/#/site/${username}`;
+  const fullDisplayUrl = `${window.location.origin}${publicRelativeUrl}`;
 
   app.innerHTML = `
     <div class="card">
-      <h2>Selamat Datang, ${currentUserProfile?.name || 'User'}</h2>
+      <h2>Selamat Datang, ${currentUserProfile?.name || 'Admin'}</h2>
       <div style="margin-top: 1rem;">
         <p><strong>Website:</strong> ${site.siteName || '-'}</p>
-        <p><strong>Username:</strong> @${site.username}</p>
-        <p><strong>URL:</strong> <a href="/site/${site.username}" target="_blank">${publicUrl}</a></p>
+        <p><strong>Username:</strong> @${username}</p>
+        <p><strong>URL Publik:</strong> <a href="${publicRelativeUrl}" target="_blank">${fullDisplayUrl}</a></p>
         <p><strong>Paket:</strong> <span class="badge" style="background:#0284c7;">${site.plan?.toUpperCase() || 'FREE'}</span></p>
         <p><strong>Status:</strong> <span class="badge badge-${site.status}">${site.status?.replace('_', ' ').toUpperCase()}</span></p>
         
@@ -274,8 +288,11 @@ async function renderDashboard() {
         <button id="btnSubmitReview" class="btn btn-secondary" ${['pending_review', 'approved', 'published'].includes(site.status) ? 'disabled' : ''}>
           ${site.status === 'pending_review' ? 'Menunggu Review Admin' : 'Ajukan Review'}
         </button>
-        <a href="/site/${site.username}" class="btn btn-success" ${site.status !== 'published' ? 'style="opacity:0.5; pointer-events:none;"' : ''}>
-          Lihat Website Publik
+        <a href="${publicRelativeUrl}" class="btn btn-success" ${site.status !== 'published' ? 'style="opacity:0.5; pointer-events:none;"' : ''}>
+          Lihat Website (Path)
+        </a>
+        <a href="${publicHashUrl}" class="btn btn-secondary" ${site.status !== 'published' ? 'style="opacity:0.5; pointer-events:none;"' : ''}>
+          Lihat Website (Hash Fallback)
         </a>
       </div>
     </div>
@@ -298,7 +315,7 @@ async function renderDashboard() {
 async function renderBuilder() {
   const app = document.getElementById('app');
   const siteDoc = await getDoc(doc(db, 'websites', currentUser.uid));
-  const site = siteDoc.data();
+  const site = siteDoc.data() || {};
 
   app.innerHTML = `
     <div class="card">
@@ -385,8 +402,6 @@ async function renderBuilder() {
 
   document.getElementById('formBuilder').addEventListener('submit', async (e) => {
     e.preventDefault();
-    
-    // Ambil data produk
     const names = document.querySelectorAll('.prod-name');
     const prices = document.querySelectorAll('.prod-price');
     const descs = document.querySelectorAll('.prod-desc');
@@ -419,7 +434,7 @@ async function renderBuilder() {
   });
 }
 
-// 5. Admin Panel (Review Queue & Moderation)
+// 5. Admin Panel
 async function renderAdminDashboard() {
   const app = document.getElementById('app');
   app.innerHTML = `
@@ -445,7 +460,6 @@ async function renderAdminDashboard() {
     </div>
   `;
 
-  // Fetch summary metrics
   const uSnap = await getDocs(collection(db, 'users'));
   const pSnap = await getDocs(query(collection(db, 'websites'), where('status', '==', 'pending_review')));
   const pubSnap = await getDocs(query(collection(db, 'websites'), where('status', '==', 'published')));
@@ -509,10 +523,9 @@ async function renderAdminReviews() {
   html += `</tbody></table></div><a href="#/admin" class="btn btn-secondary" style="margin-top:1rem;">Kembali</a></div>`;
   app.innerHTML = html;
 
-  // Actions listener
   document.querySelectorAll('.btnPreviewAdmin').forEach(b => {
     b.addEventListener('click', (e) => {
-      window.open(`/site/${e.target.dataset.user}`, '_blank');
+      window.open(`${BASE_PATH}/site/${e.target.dataset.user}`, '_blank');
     });
   });
 
@@ -609,14 +622,19 @@ async function renderPublicSite(username) {
     const snap = await getDocs(q);
 
     if (snap.empty) {
-      root.innerHTML = `<div class="card" style="text-align:center;"><h2>404 - Tidak Ditemukan</h2><p>Website dengan username @${username} tidak ditemukan.</p></div>`;
+      root.innerHTML = `
+        <div class="card" style="text-align:center;">
+          <h2>404 - Tidak Ditemukan</h2>
+          <p>Website dengan username @${username} tidak ditemukan di database.</p>
+          <a href="${BASE_PATH}/#/dashboard" class="btn btn-secondary" style="margin-top:1rem;">Ke Dashboard</a>
+        </div>
+      `;
       return;
     }
 
     const siteDoc = snap.docs[0];
     const site = siteDoc.data();
 
-    // Security Gate: Cek status suspensi dan publikasi
     if (site.status === 'suspended') {
       root.innerHTML = `<div class="card" style="text-align:center; color:#991b1b;"><h2>Website Ditangguhkan</h2><p>Website ini sedang tidak tersedia karena melanggar aturan platform.</p></div>`;
       return;
@@ -630,11 +648,10 @@ async function renderPublicSite(username) {
       return;
     }
 
-    // Render Canvas
     root.innerHTML = `
       <div class="public-site-view">
         <header class="site-hero">
-          <h1>${site.siteName}</h1>
+          <h1>${site.siteName || 'Bandar Official'}</h1>
           <p style="margin-top:0.5rem; color:var(--text-muted);">${site.description || ''}</p>
         </header>
 
@@ -666,7 +683,7 @@ async function renderPublicSite(username) {
         </section>
 
         <footer class="report-bar">
-          <p>&copy; ${new Date().getFullYear()} ${site.siteName} &bull; Powered by BandarBuilder</p>
+          <p>&copy; ${new Date().getFullYear()} ${site.siteName || 'Bandar'} &bull; Powered by BandarBuilder</p>
           <a href="javascript:void(0)" id="btnReport" style="color:var(--text-muted); text-decoration:underline; font-size:0.75rem;">Laporkan Website</a>
         </footer>
       </div>
@@ -681,7 +698,7 @@ async function renderPublicSite(username) {
   }
 }
 
-// 7. Abuse Reporting Modal
+// 7. Abuse Reporting
 function renderReportModal(websiteId) {
   const reason = prompt("Pilih Alasan Laporan:\n1. Penipuan\n2. Spam\n3. Judi\n4. Phishing\n5. Konten Ilegal\n\nKetik alasan:");
   if (!reason) return;
@@ -701,19 +718,12 @@ function renderReportModal(websiteId) {
   }).catch(err => alert('Gagal mengirim laporan: ' + err.message));
 }
 
-// 8. Terms of Service
+// 8. Terms
 function renderTerms() {
   document.getElementById('app').innerHTML = `
     <div class="card">
       <h2>Kebijakan Penggunaan Platform</h2>
-      <p style="margin-top:1rem;">Platform ini melarang segala bentuk:</p>
-      <ul style="margin-left:1.5rem; margin-top:0.5rem;">
-        <li>Penipuan dan Phishing</li>
-        <li>Promosi Judi Ilegal</li>
-        <li>Penyebaran Spam dan Malware</li>
-        <li>Penyalahgunaan Hak Cipta dan Identitas</li>
-      </ul>
-      <p style="margin-top:1rem;">Pelanggaran akan mengakibatkan penangguhan website (*suspension*) dan pemblokiran akun secara permanen.</p>
+      <p style="margin-top:1rem;">Platform ini melarang segala bentuk penipuan, judi, spam, dan konten ilegal.</p>
     </div>
   `;
 }
