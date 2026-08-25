@@ -105,6 +105,68 @@ export function showPrompt(title, message, defaultValue = '', onConfirm, placeho
   };
 }
 
+// Modal Khusus Laporan Publik
+export function showReportModal(websiteId, siteName) {
+  const container = document.getElementById('modal-container');
+  const modal = document.createElement('div');
+  modal.className = 'modal-overlay';
+  modal.innerHTML = `
+    <div class="modal-card">
+      <div class="modal-title">Laporkan Website: ${siteName}</div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label>Alasan Pelanggaran</label>
+          <select class="form-control report-reason">
+            <option value="Penipuan / Scam">Penipuan / Scam</option>
+            <option value="Judi Online">Judi Online</option>
+            <option value="Phishing / Pencurian Data">Phishing / Pencurian Data</option>
+            <option value="Spam / Konten Palsu">Spam / Konten Palsu</option>
+            <option value="Konten Ilegal / Berbahaya">Konten Ilegal / Berbahaya</option>
+            <option value="Lainnya">Lainnya</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Keterangan Tambahan (Opsional)</label>
+          <textarea class="form-control report-desc" rows="2" placeholder="Jelaskan detail pelanggaran..."></textarea>
+        </div>
+        <div class="form-group">
+          <label>Email Anda (Opsional)</label>
+          <input type="email" class="form-control report-email" placeholder="nama@email.com" />
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-sm btn-secondary btnCancel">Batal</button>
+        <button class="btn btn-sm btn-danger btnSendReport">Kirim Laporan</button>
+      </div>
+    </div>
+  `;
+
+  container.appendChild(modal);
+
+  modal.querySelector('.btnCancel').onclick = () => modal.remove();
+  modal.querySelector('.btnSendReport').onclick = async () => {
+    const reason = modal.querySelector('.report-reason').value;
+    const description = modal.querySelector('.report-desc').value.trim();
+    const reporterEmail = modal.querySelector('.report-email').value.trim() || 'Anonymous';
+
+    modal.remove();
+    try {
+      await addDoc(collection(db, 'reports'), {
+        websiteId,
+        siteName,
+        reason,
+        description,
+        reporterEmail,
+        status: 'new',
+        createdAt: serverTimestamp()
+      });
+      showToast('Laporan Anda telah berhasil dikirim ke Admin untuk ditinjau.', 'success');
+    } catch (err) {
+      showToast('Gagal mengirim laporan: ' + err.message, 'error');
+    }
+  };
+}
+
 // ========================================================
 // ROUTING & APP STATE
 // ========================================================
@@ -449,7 +511,7 @@ function renderLogin() {
   });
 }
 
-// 3. User & Admin Dashboard
+// 3. User Dashboard
 async function renderDashboard() {
   if (!currentUser) return renderLogin();
   const app = document.getElementById('app');
@@ -884,7 +946,7 @@ async function renderBuilder() {
   });
 }
 
-// 5. ADMIN CONTROL PANEL
+// 5. ADMIN CONTROL PANEL (Lengkap dengan Manajemen User, Website, & Laporan)
 async function renderAdminDashboard() {
   const app = document.getElementById('app');
   app.innerHTML = `<div class="card"><p>Memuat Admin Dashboard...</p></div>`;
@@ -894,11 +956,13 @@ async function renderAdminDashboard() {
   const pSnap = await getDocs(query(collection(db, 'websites'), where('status', '==', 'pending_review')));
   const pubSnap = await getDocs(query(collection(db, 'websites'), where('status', '==', 'published')));
   const susSnap = await getDocs(query(collection(db, 'websites'), where('status', '==', 'suspended')));
+  const repSnap = await getDocs(collection(db, 'reports'));
 
   const adminSiteDoc = await getDoc(doc(db, 'websites', currentUser.uid));
   const adminSite = adminSiteDoc.data() || {};
   const adminDemoUrl = `${BASE_PATH}/#/site/${adminSite.username || 'admin'}`;
 
+  // 1. Baris Tabel Users
   let usersHtml = '';
   uSnap.forEach(uDoc => {
     const u = uDoc.data();
@@ -940,6 +1004,7 @@ async function renderAdminDashboard() {
     `;
   });
 
+  // 2. Baris Tabel Websites
   let sitesHtml = '';
   wSnap.forEach(docSnap => {
     const site = docSnap.data();
@@ -989,6 +1054,52 @@ async function renderAdminDashboard() {
     `;
   });
 
+  // 3. Baris Tabel Laporan Pelanggaran (Reports)
+  let reportsHtml = '';
+  let newReportsCount = 0;
+  repSnap.forEach(rDoc => {
+    const r = rDoc.data();
+    const repId = rDoc.id;
+    const isNew = r.status === 'new';
+    if (isNew) newReportsCount++;
+
+    const dateStr = r.createdAt?.toDate ? r.createdAt.toDate().toLocaleString('id-ID') : 'Baru saja';
+
+    reportsHtml += `
+      <tr style="${isNew ? 'background:#fffbeb;' : ''}">
+        <td>
+          <strong>${r.siteName || 'Website ID: ' + r.websiteId}</strong><br/>
+          <small style="color:var(--text-muted);">${dateStr}</small>
+        </td>
+        <td>
+          <strong style="color:#b91c1c;">${r.reason || '-'}</strong>
+          ${r.description ? `<p style="font-size:0.8rem; color:#475569; margin-top:2px;">"${r.description}"</p>` : ''}
+          <small style="color:var(--text-muted);">Pelapor: ${r.reporterEmail || 'Anonim'}</small>
+        </td>
+        <td>
+          <span class="badge ${isNew ? 'badge-rejected' : (r.status === 'resolved' ? 'badge-published' : 'badge-draft')}">
+            ${r.status?.toUpperCase() || 'NEW'}
+          </span>
+        </td>
+        <td>
+          <div style="display:flex; gap:4px; flex-wrap:wrap;">
+            <button class="btn btn-sm btn-danger btnReportSuspend" data-siteid="${r.websiteId}" data-sitename="${r.siteName || ''}" data-repid="${repId}">
+              ⛔ Suspend Site
+            </button>
+            ${isNew ? `
+              <button class="btn btn-sm btn-success btnResolveReport" data-id="${repId}">
+                ✅ Selesai
+              </button>
+              <button class="btn btn-sm btn-secondary btnDismissReport" data-id="${repId}">
+                Abaikan
+              </button>
+            ` : ''}
+          </div>
+        </td>
+      </tr>
+    `;
+  });
+
   app.innerHTML = `
     <div class="card">
       <div style="display:flex; justify-content:space-between; align-items:center;">
@@ -1016,8 +1127,8 @@ async function renderAdminDashboard() {
           <p>Website Published</p>
         </div>
         <div class="lp-card">
-          <h2 style="color:var(--badge-suspended);">${susSnap.size}</h2>
-          <p>Website Suspended</p>
+          <h2 style="color:#dc2626;">${repSnap.size}</h2>
+          <p>Laporan Masuk</p>
         </div>
       </div>
     </div>
@@ -1033,6 +1144,31 @@ async function renderAdminDashboard() {
         </div>
       </div>
     ` : ''}
+
+    <!-- TABEL LAPORAN PELANGGARAN PENGGUNA (REPORTS) -->
+    <div class="card" style="${newReportsCount > 0 ? 'border: 2px solid #ef4444;' : ''}">
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <h3>🚨 Laporan Penyalahgunaan Website (${repSnap.size})</h3>
+        ${newReportsCount > 0 ? `<span class="badge badge-rejected">${newReportsCount} Laporan Baru</span>` : ''}
+      </div>
+      <p class="help-text" style="margin-bottom:1rem;">Daftar laporan dari pengunjung publik terkait website yang terindikasi melanggar aturan platform.</p>
+      
+      <div class="table-responsive">
+        <table>
+          <thead>
+            <tr>
+              <th>Target Website</th>
+              <th>Detail Laporan & Alasan</th>
+              <th>Status</th>
+              <th>Tindakan Admin</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${reportsHtml || '<tr><td colspan="4" style="text-align:center;">Belum ada laporan penyalahgunaan.</td></tr>'}
+          </tbody>
+        </table>
+      </div>
+    </div>
 
     <div class="card">
       <h3>👥 Kelola Akun Pengguna (Users)</h3>
@@ -1076,7 +1212,72 @@ async function renderAdminDashboard() {
     </div>
   `;
 
-  // Listeners User Management
+  // === LISTENERS LAPORAN (REPORTS) ===
+  
+  // Suspend dari Laporan
+  document.querySelectorAll('.btnReportSuspend').forEach(btn => {
+    btn.onclick = (e) => {
+      const siteId = e.target.dataset.siteid;
+      const siteName = e.target.dataset.sitename || 'Website Terlapor';
+      const repId = e.target.dataset.repid;
+
+      showPrompt(
+        'Tangguhkan Website Terlapor',
+        `Tuliskan alasan penangguhan untuk "${siteName}":`,
+        'Terbukti melanggar kebijakan platform berdasarkan laporan publik',
+        async (reason) => {
+          await updateDoc(doc(db, 'websites', siteId), {
+            status: 'suspended',
+            published: false,
+            moderationNote: reason,
+            reviewedBy: currentUser.uid,
+            reviewedAt: serverTimestamp()
+          });
+
+          await updateDoc(doc(db, 'reports', repId), {
+            status: 'resolved',
+            actionTaken: 'suspended',
+            resolvedAt: serverTimestamp()
+          });
+
+          showToast(`Website "${siteName}" telah ditangguhkan dan laporan diselesaikan!`, 'success');
+          renderAdminDashboard();
+        }
+      );
+    };
+  });
+
+  // Resolve Laporan
+  document.querySelectorAll('.btnResolveReport').forEach(btn => {
+    btn.onclick = (e) => {
+      const repId = e.target.dataset.id;
+      showConfirm('Selesaikan Laporan', 'Tandai laporan ini sebagai SELESAI (Resolved)?', async () => {
+        await updateDoc(doc(db, 'reports', repId), {
+          status: 'resolved',
+          resolvedAt: serverTimestamp()
+        });
+        showToast('Laporan ditandai sebagai selesai.', 'success');
+        renderAdminDashboard();
+      });
+    };
+  });
+
+  // Dismiss Laporan
+  document.querySelectorAll('.btnDismissReport').forEach(btn => {
+    btn.onclick = (e) => {
+      const repId = e.target.dataset.id;
+      showConfirm('Abaikan Laporan', 'Abaikan laporan ini (Dianggap tidak melanggar aturan)?', async () => {
+        await updateDoc(doc(db, 'reports', repId), {
+          status: 'dismissed',
+          dismissedAt: serverTimestamp()
+        });
+        showToast('Laporan telah diabaikan.', 'info');
+        renderAdminDashboard();
+      });
+    };
+  });
+
+  // === LISTENERS USER & WEBSITE MANAGEMENT ===
   document.querySelectorAll('.btnSuspendUser').forEach(btn => {
     btn.onclick = (e) => {
       const uid = e.target.dataset.id;
@@ -1133,7 +1334,6 @@ async function renderAdminDashboard() {
     };
   });
 
-  // Listeners Website Management
   document.querySelectorAll('.btnDirectPublish').forEach(btn => {
     btn.onclick = (e) => {
       const siteId = e.target.dataset.id;
@@ -1468,13 +1668,7 @@ async function renderPublicLandingPage(username) {
     `;
 
     document.getElementById('btnReport')?.addEventListener('click', () => {
-      showPrompt('Laporkan Halaman Ini', 'Pilih atau tuliskan alasan laporan Anda:', 'Konten Tidak Sesuai', (reason) => {
-        addDoc(collection(db, 'reports'), {
-          websiteId: siteDoc.id,
-          reason,
-          createdAt: serverTimestamp()
-        }).then(() => showToast('Laporan telah dikirim untuk ditinjau.', 'success'));
-      }, 'Contoh: Penipuan, Judi, Spam, Konten Ilegal');
+      showReportModal(siteDoc.id, site.siteName || `@${username}`);
     });
 
   } catch (err) {
