@@ -34,7 +34,6 @@ let currentUser = null;
 let currentUserProfile = null;
 
 // --- AUTO-COMPRESS GAMBAR (Client-Side Resizer) ---
-// Mengompresi gambar otomatis sebelum diunggah agar proses hanya 1-2 detik
 async function compressImage(file, maxWidth = 1200, quality = 0.8) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -68,13 +67,12 @@ async function compressImage(file, maxWidth = 1200, quality = 0.8) {
   });
 }
 
-// Helper Upload Image ke Firebase Storage dengan Timeout & Kompresi
+// Helper Upload Image ke Firebase Storage
 async function uploadImageFile(file, path) {
   if (!file) return null;
   const compressedBlob = await compressImage(file);
   const storageRef = ref(storage, path);
   
-  // Timeout 15 detik untuk mencegah loading terus menerus
   const uploadPromise = uploadBytes(storageRef, compressedBlob, { contentType: 'image/jpeg' });
   const timeoutPromise = new Promise((_, reject) => 
     setTimeout(() => reject(new Error("Unggah gambar timeout. Silakan gunakan opsi URL Gambar.")), 15000)
@@ -169,7 +167,7 @@ function renderNavbar() {
       <nav class="nav-links">
         ${currentUser ? `
           <a href="#/dashboard">Dashboard</a>
-          ${currentUserProfile?.role === 'admin' ? '<a href="#/admin" style="color:var(--primary); font-weight:bold;">Admin Panel</a>' : ''}
+          ${currentUserProfile?.role === 'admin' ? '<a href="#/admin" style="color:var(--primary); font-weight:bold;">Admin Control Panel</a>' : ''}
           <button id="btnLogout" class="btn btn-sm btn-secondary">Logout</button>
         ` : `
           <a href="#/login">Login</a>
@@ -328,7 +326,11 @@ async function renderDashboard() {
 
   app.innerHTML = `
     <div class="card">
-      <h2>Selamat Datang, ${currentUserProfile?.name || 'User'}</h2>
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <h2>Selamat Datang, ${currentUserProfile?.name || 'User'}</h2>
+        ${currentUserProfile?.role === 'admin' ? '<a href="#/admin" class="btn btn-sm btn-primary">🛠️ Masuk Admin Control Panel</a>' : ''}
+      </div>
+      
       <div style="margin-top: 1rem;">
         <p><strong>Website:</strong> ${site.siteName || '-'}</p>
         <p><strong>Username:</strong> @${username}</p>
@@ -339,6 +341,11 @@ async function renderDashboard() {
         ${site.status === 'rejected' ? `
           <div style="margin-top:1rem; padding:0.75rem; background:#fee2e2; border:1px solid #f87171; border-radius:6px; color:#991b1b;">
             <strong>Catatan Penolakan:</strong> ${site.moderationNote || 'Perbaiki konten agar sesuai ketentuan.'}
+          </div>
+        ` : ''}
+        ${site.status === 'suspended' ? `
+          <div style="margin-top:1rem; padding:0.75rem; background:#fee2e2; border:1px solid #f87171; border-radius:6px; color:#991b1b;">
+            <strong>Website Anda Disuspend oleh Admin:</strong> ${site.moderationNote || 'Melanggar kebijakan platform.'}
           </div>
         ` : ''}
       </div>
@@ -410,7 +417,7 @@ async function renderDashboard() {
   });
 }
 
-// 4. Section Builder (Dual Mode: URL & Upload File)
+// 4. Section Builder
 async function renderBuilder() {
   const app = document.getElementById('app');
   app.innerHTML = `<div class="card"><p>Memuat data builder...</p></div>`;
@@ -533,7 +540,6 @@ async function renderBuilder() {
     </div>
   `;
 
-  // Render Layanan
   const renderServices = () => {
     const box = document.getElementById('serviceContainer');
     box.innerHTML = services.map((s, i) => `
@@ -552,7 +558,6 @@ async function renderBuilder() {
     });
   };
 
-  // Render Produk (Dual-Input: URL & Upload)
   const renderProducts = () => {
     const box = document.getElementById('productContainer');
     box.innerHTML = products.map((p, i) => `
@@ -585,7 +590,6 @@ async function renderBuilder() {
     });
   };
 
-  // Render FAQ
   const renderFaqs = () => {
     const box = document.getElementById('faqContainer');
     box.innerHTML = faqs.map((f, i) => `
@@ -604,7 +608,6 @@ async function renderBuilder() {
     });
   };
 
-  // Render Testimoni
   const renderTestis = () => {
     const box = document.getElementById('testiContainer');
     box.innerHTML = testimonials.map((t, i) => `
@@ -646,7 +649,7 @@ async function renderBuilder() {
     renderTestis();
   };
 
-  // Submit Handler (Cepat & Non-Blocking)
+  // Submit Handler
   document.getElementById('formBuilder').addEventListener('submit', async (e) => {
     e.preventDefault();
     const btnSave = document.getElementById('btnSaveBuilder');
@@ -654,7 +657,6 @@ async function renderBuilder() {
     btnSave.innerText = "⏳ Sedang Menyimpan Data...";
 
     try {
-      // 1. Prioritaskan URL Gambar, lalu file upload
       let heroImgUrl = document.getElementById('heroImageUrl').value.trim();
       const heroFileInput = document.getElementById('heroImageFile');
       if (heroFileInput.files[0]) {
@@ -662,7 +664,6 @@ async function renderBuilder() {
         heroImgUrl = await uploadImageFile(heroFileInput.files[0], `websites/${currentUser.uid}/hero_${Date.now()}`);
       }
 
-      // 2. Ambil data produk
       const pNames = document.querySelectorAll('.p-name');
       const pPrices = document.querySelectorAll('.p-price');
       const pDescs = document.querySelectorAll('.p-desc');
@@ -684,7 +685,6 @@ async function renderBuilder() {
         });
       }
 
-      // 3. Layanan
       const sTitles = document.querySelectorAll('.s-title');
       const sDescs = document.querySelectorAll('.s-desc');
       const updatedServices = [];
@@ -692,7 +692,6 @@ async function renderBuilder() {
         updatedServices.push({ title: sTitles[i].value, desc: sDescs[i].value });
       }
 
-      // 4. FAQ
       const fQs = document.querySelectorAll('.f-q');
       const fAs = document.querySelectorAll('.f-a');
       const updatedFaqs = [];
@@ -700,7 +699,6 @@ async function renderBuilder() {
         updatedFaqs.push({ q: fQs[i].value, a: fAs[i].value });
       }
 
-      // 5. Testimoni
       const tNames = document.querySelectorAll('.t-name');
       const tTexts = document.querySelectorAll('.t-text');
       const updatedTestis = [];
@@ -708,7 +706,6 @@ async function renderBuilder() {
         updatedTestis.push({ name: tNames[i].value, text: tTexts[i].value });
       }
 
-      // Simpan Langsung ke Firestore
       await updateDoc(doc(db, 'websites', currentUser.uid), {
         siteName: document.getElementById('siteName').value,
         description: document.getElementById('siteDesc').value,
@@ -743,41 +740,239 @@ async function renderBuilder() {
   });
 }
 
-// 5. Admin Panel
+// 5. ADMIN CONTROL PANEL (Kelola Semua Website & User: Publish, Draft, Suspend)
 async function renderAdminDashboard() {
   const app = document.getElementById('app');
+  app.innerHTML = `<div class="card"><p>Memuat Admin Dashboard...</p></div>`;
+
+  // Fetch stats & all websites
+  const uSnap = await getDocs(collection(db, 'users'));
+  const wSnap = await getDocs(collection(db, 'websites'));
+  const pSnap = await getDocs(query(collection(db, 'websites'), where('status', '==', 'pending_review')));
+  const pubSnap = await getDocs(query(collection(db, 'websites'), where('status', '==', 'published')));
+  const susSnap = await getDocs(query(collection(db, 'websites'), where('status', '==', 'suspended')));
+
+  let rowsHtml = '';
+  wSnap.forEach(docSnap => {
+    const site = docSnap.data();
+    const siteId = docSnap.id;
+    const isPublished = site.status === 'published';
+    const isSuspended = site.status === 'suspended';
+    const isDraft = site.status === 'draft';
+
+    rowsHtml += `
+      <tr>
+        <td>
+          <strong>${site.siteName || '-'}</strong><br/>
+          <small>@${site.username} (${site.plan?.toUpperCase() || 'FREE'})</small>
+        </td>
+        <td>
+          <span class="badge badge-${site.status}">${site.status?.replace('_', ' ').toUpperCase()}</span>
+        </td>
+        <td>
+          <div style="display:flex; gap:4px; flex-wrap:wrap;">
+            <a href="${BASE_PATH}/#/site/${site.username}" target="_blank" class="btn btn-sm btn-secondary">Preview</a>
+            
+            ${!isPublished ? `
+              <button class="btn btn-sm btn-success btnDirectPublish" data-id="${siteId}" data-name="${site.siteName}">
+                🚀 Publish
+              </button>
+            ` : ''}
+
+            ${!isDraft ? `
+              <button class="btn btn-sm btn-secondary btnDirectDraft" data-id="${siteId}" data-name="${site.siteName}">
+                📝 Set Draft
+              </button>
+            ` : ''}
+
+            ${!isSuspended ? `
+              <button class="btn btn-sm btn-danger btnDirectSuspend" data-id="${siteId}" data-name="${site.siteName}">
+                ⛔ Suspend
+              </button>
+            ` : `
+              <button class="btn btn-sm btn-primary btnDirectUnsuspend" data-id="${siteId}">
+                🔓 Unsuspend
+              </button>
+            `}
+          </div>
+        </td>
+      </tr>
+    `;
+  });
+
   app.innerHTML = `
     <div class="card">
       <div style="display:flex; justify-content:space-between; align-items:center;">
-        <h2>Admin Moderation Dashboard</h2>
-        <a href="#/admin/reviews" class="btn btn-primary">Buka Antrean Review</a>
+        <h2>Admin Control & Moderation Panel</h2>
+        <a href="#/dashboard" class="btn btn-sm btn-secondary">Kembali ke Dashboard Saya</a>
       </div>
+
+      <!-- Stat Cards -->
       <div class="lp-grid" style="margin-top:1.5rem;">
         <div class="lp-card">
-          <h2 id="statUsers" style="color:var(--primary);">-</h2>
+          <h2 style="color:var(--primary);">${uSnap.size}</h2>
           <p>Total User</p>
         </div>
         <div class="lp-card">
-          <h2 id="statPending" style="color:var(--badge-pending);">-</h2>
+          <h2 style="color:var(--badge-pending);">${pSnap.size}</h2>
           <p>Menunggu Review</p>
         </div>
         <div class="lp-card">
-          <h2 id="statPublished" style="color:var(--badge-published);">-</h2>
-          <p>Landing Page Aktif</p>
+          <h2 style="color:var(--badge-published);">${pubSnap.size}</h2>
+          <p>Website Published</p>
         </div>
+        <div class="lp-card">
+          <h2 style="color:var(--badge-suspended);">${susSnap.size}</h2>
+          <p>Website Suspended</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Antrean Review Cepat -->
+    ${pSnap.size > 0 ? `
+      <div class="card" style="border: 2px solid var(--badge-pending); background: #fffbeb;">
+        <h3>⚠️ Ada ${pSnap.size} Website Menunggu Moderasi!</h3>
+        <p style="margin: 0.5rem 0 1rem 0;">User telah mengajukan review dan menunggu persetujuan admin.</p>
+        <a href="#/admin/reviews" class="btn btn-primary">Buka Antrean Moderasi Khusus</a>
+      </div>
+    ` : ''}
+
+    <!-- Manajemen Seluruh Website Pengguna -->
+    <div class="card">
+      <h3>Daftar Seluruh Website & Pengguna</h3>
+      <p class="help-text" style="margin-bottom:1rem;">Admin dapat mempublikasikan langsung, mengubah menjadi draft, atau menangguhkan (suspend) website kapan saja.</p>
+      
+      <div class="table-responsive">
+        <table>
+          <thead>
+            <tr>
+              <th>Website & Username</th>
+              <th>Status Saat Ini</th>
+              <th>Aksi Admin</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rowsHtml || '<tr><td colspan="3" style="text-align:center;">Belum ada website terdaftar.</td></tr>'}
+          </tbody>
+        </table>
       </div>
     </div>
   `;
 
-  const uSnap = await getDocs(collection(db, 'users'));
-  const pSnap = await getDocs(query(collection(db, 'websites'), where('status', '==', 'pending_review')));
-  const pubSnap = await getDocs(query(collection(db, 'websites'), where('status', '==', 'published')));
+  // Listener Tombol Admin Direct Actions:
 
-  document.getElementById('statUsers').innerText = uSnap.size;
-  document.getElementById('statPending').innerText = pSnap.size;
-  document.getElementById('statPublished').innerText = pubSnap.size;
+  // 1. Direct Publish
+  document.querySelectorAll('.btnDirectPublish').forEach(btn => {
+    btn.onclick = async (e) => {
+      const siteId = e.target.dataset.id;
+      const name = e.target.dataset.name;
+      if (confirm(`Publikasikan website "${name}" sekarang agar bisa diakses umum?`)) {
+        await updateDoc(doc(db, 'websites', siteId), {
+          status: 'published',
+          published: true,
+          approved: true,
+          reviewedBy: currentUser.uid,
+          reviewedAt: serverTimestamp()
+        });
+
+        await addDoc(collection(db, 'moderationLogs'), {
+          adminId: currentUser.uid,
+          websiteId: siteId,
+          action: 'publish_direct',
+          reason: 'Dipublikasikan langsung oleh admin',
+          createdAt: serverTimestamp()
+        });
+
+        alert(`Website "${name}" telah berhasil DIPUBLIKASIKAN!`);
+        renderAdminDashboard();
+      }
+    };
+  });
+
+  // 2. Direct Draft
+  document.querySelectorAll('.btnDirectDraft').forEach(btn => {
+    btn.onclick = async (e) => {
+      const siteId = e.target.dataset.id;
+      const name = e.target.dataset.name;
+      if (confirm(`Ubah website "${name}" kembali menjadi DRAFT (Website ditarik dari publik)?`)) {
+        await updateDoc(doc(db, 'websites', siteId), {
+          status: 'draft',
+          published: false,
+          approved: false,
+          updatedAt: serverTimestamp()
+        });
+
+        await addDoc(collection(db, 'moderationLogs'), {
+          adminId: currentUser.uid,
+          websiteId: siteId,
+          action: 'set_draft',
+          reason: 'Website ditarik kembali ke draft oleh admin',
+          createdAt: serverTimestamp()
+        });
+
+        alert(`Website "${name}" telah diubah menjadi DRAFT.`);
+        renderAdminDashboard();
+      }
+    };
+  });
+
+  // 3. Direct Suspend
+  document.querySelectorAll('.btnDirectSuspend').forEach(btn => {
+    btn.onclick = async (e) => {
+      const siteId = e.target.dataset.id;
+      const name = e.target.dataset.name;
+      const reason = prompt(`Masukkan alasan penangguhan (Suspend) untuk "${name}":\n(Contoh: Penipuan, Judi, Konten Ilegal, Spam)`);
+      if (reason) {
+        await updateDoc(doc(db, 'websites', siteId), {
+          status: 'suspended',
+          published: false,
+          moderationNote: reason,
+          reviewedBy: currentUser.uid,
+          reviewedAt: serverTimestamp()
+        });
+
+        await addDoc(collection(db, 'moderationLogs'), {
+          adminId: currentUser.uid,
+          websiteId: siteId,
+          action: 'suspend',
+          reason,
+          createdAt: serverTimestamp()
+        });
+
+        alert(`Website "${name}" telah di-SUSPEND!`);
+        renderAdminDashboard();
+      }
+    };
+  });
+
+  // 4. Direct Unsuspend
+  document.querySelectorAll('.btnDirectUnsuspend').forEach(btn => {
+    btn.onclick = async (e) => {
+      const siteId = e.target.dataset.id;
+      if (confirm(`Buka penangguhan (Unsuspend) website ini dan kembalikan ke status Draft?`)) {
+        await updateDoc(doc(db, 'websites', siteId), {
+          status: 'draft',
+          published: false,
+          moderationNote: '',
+          updatedAt: serverTimestamp()
+        });
+
+        await addDoc(collection(db, 'moderationLogs'), {
+          adminId: currentUser.uid,
+          websiteId: siteId,
+          action: 'unsuspend',
+          reason: 'Penangguhan dicabut oleh admin',
+          createdAt: serverTimestamp()
+        });
+
+        alert('Website telah di-unsuspend dan berstatus Draft.');
+        renderAdminDashboard();
+      }
+    };
+  });
 }
 
+// Antrean Moderasi Khusus (Pending Review)
 async function renderAdminReviews() {
   const app = document.getElementById('app');
   app.innerHTML = `<div class="card"><p>Memuat antrean...</p></div>`;
@@ -790,7 +985,7 @@ async function renderAdminReviews() {
       <div class="card">
         <h2>Antrean Moderasi</h2>
         <p style="margin-top:1rem;">Tidak ada website/landing page yang menunggu review.</p>
-        <a href="#/admin" class="btn btn-secondary" style="margin-top:1rem;">Kembali</a>
+        <a href="#/admin" class="btn btn-secondary" style="margin-top:1rem;">Kembali ke Admin Panel</a>
       </div>
     `;
     return;
@@ -810,14 +1005,14 @@ async function renderAdminReviews() {
         <p style="color:var(--text-muted); font-size:0.9rem; margin-top:0.25rem;">${data.description || '-'}</p>
         <div style="margin-top:1rem; display:flex; gap:0.5rem;">
           <button class="btn btn-sm btn-secondary btnPreviewAdmin" data-user="${data.username}">Preview Landing Page</button>
-          <button class="btn btn-sm btn-success btnApprove" data-id="${docSnap.id}">Approve</button>
+          <button class="btn btn-sm btn-success btnApprove" data-id="${docSnap.id}">Approve & Publish</button>
           <button class="btn btn-sm btn-danger btnReject" data-id="${docSnap.id}">Reject</button>
         </div>
       </div>
     `;
   });
 
-  html += `</div><a href="#/admin" class="btn btn-secondary">Kembali ke Admin</a></div>`;
+  html += `</div><a href="#/admin" class="btn btn-secondary">Kembali ke Admin Panel</a></div>`;
   app.innerHTML = html;
 
   document.querySelectorAll('.btnPreviewAdmin').forEach(b => {
@@ -835,7 +1030,7 @@ async function renderAdminReviews() {
           reviewedBy: currentUser.uid,
           reviewedAt: serverTimestamp()
         });
-        alert('Landing page berhasil disetujui!');
+        alert('Landing page berhasil disetujui & dipublikasikan!');
         renderAdminReviews();
       }
     };
@@ -861,7 +1056,7 @@ async function renderAdminReviews() {
   });
 }
 
-// 6. Public Landing Page View (Hero Bersih & Adaptif)
+// 6. Public Landing Page View
 async function renderPublicLandingPage(username) {
   const root = document.getElementById('app');
   document.getElementById('navbar-container').innerHTML = '';
@@ -880,7 +1075,6 @@ async function renderPublicLandingPage(username) {
     const siteDoc = snap.docs[0];
     const site = siteDoc.data();
 
-    // Set Title Browser Sesuai Nama Bisnis
     document.title = site.siteName || "Official Website";
     
     const metaDesc = site.description || `Website resmi ${site.siteName}`;
@@ -900,13 +1094,13 @@ async function renderPublicLandingPage(username) {
     const isAdminUser = currentUserProfile?.role === 'admin';
 
     if (site.status !== 'published' && !isOwner && !isAdminUser) {
-      root.innerHTML = `<div class="card" style="text-align:center; margin:3rem auto; max-width:500px;"><h2>Website Belum Publik</h2><p>Landing page ini sedang dalam proses moderasi atau berstatus draft.</p></div>`;
+      root.innerHTML = `<div class="card" style="text-align:center; margin:3rem auto; max-width:500px;"><h2>Website Belum Publik</h2><p>Landing page ini sedang dalam proses moderasi atau masih berstatus draft.</p></div>`;
       return;
     }
 
     root.innerHTML = `
       <div class="landing-page">
-        <!-- Hero Section (Opsional Image: Jika tidak ada image, otomatis layout bersih terpusat) -->
+        <!-- Hero Section -->
         <header class="lp-hero">
           <div class="lp-hero-with-img">
             ${site.hero?.imageUrl ? `<img src="${site.hero.imageUrl}" class="lp-hero-img" alt="${site.siteName}" />` : ''}
