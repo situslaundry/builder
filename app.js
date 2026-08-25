@@ -32,8 +32,30 @@ const RESERVED_USERNAMES = [
 
 let currentUser = null;
 let currentUserProfile = null;
+let currentMathCaptcha = { question: '', answer: 0 };
 
-// --- AUTO-COMPRESS GAMBAR (Client-Side Resizer) ---
+// Generator Soal Matematika (Pertambahan / Perkalian)
+function generateMathCaptcha() {
+  const isMultiplication = Math.random() > 0.5;
+  let num1, num2, answer, question;
+
+  if (isMultiplication) {
+    num1 = Math.floor(Math.random() * 8) + 2; // 2 - 9
+    num2 = Math.floor(Math.random() * 8) + 2; // 2 - 9
+    answer = num1 * num2;
+    question = `${num1} × ${num2}`;
+  } else {
+    num1 = Math.floor(Math.random() * 30) + 5; // 5 - 34
+    num2 = Math.floor(Math.random() * 30) + 5; // 5 - 34
+    answer = num1 + num2;
+    question = `${num1} + ${num2}`;
+  }
+
+  currentMathCaptcha = { question, answer };
+  return question;
+}
+
+// Auto Compress Image Client-Side
 async function compressImage(file, maxWidth = 1200, quality = 0.8) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -136,7 +158,7 @@ const navigate = (path) => { window.location.hash = path; };
 const requireAuth = (callback) => {
   if (!currentUser) return navigate('#/login');
   if (currentUserProfile?.status === 'suspended' || currentUserProfile?.status === 'banned') {
-    document.getElementById('app').innerHTML = `<div class="card"><h2>Akun Ditangguhkan</h2><p>Akun dinonaktifkan oleh administrator.</p></div>`;
+    document.getElementById('app').innerHTML = `<div class="card"><h2>Akun Ditangguhkan</h2><p>Akun Anda dinonaktifkan oleh administrator.</p></div>`;
     return;
   }
   callback();
@@ -144,8 +166,9 @@ const requireAuth = (callback) => {
 
 const requireAdmin = (callback) => {
   if (!currentUser) return navigate('#/login');
-  if (currentUserProfile?.role !== 'admin') {
-    document.getElementById('app').innerHTML = `<div class="card"><h2>Akses Ditolak</h2><p>Hanya untuk Administrator.</p></div>`;
+  const isAdmin = currentUserProfile?.role === 'admin' || currentUser.email === 'bandardeterjen@gmail.com';
+  if (!isAdmin) {
+    document.getElementById('app').innerHTML = `<div class="card"><h2>Akses Ditolak</h2><p>Halaman ini khusus Administrator.</p></div>`;
     return;
   }
   callback();
@@ -161,13 +184,15 @@ function renderNavbar() {
     return;
   }
 
+  const isAdmin = currentUserProfile?.role === 'admin' || currentUser?.email === 'bandardeterjen@gmail.com';
+
   container.innerHTML = `
     <header class="navbar">
       <a href="#/dashboard" class="brand">BandarBuilder</a>
       <nav class="nav-links">
         ${currentUser ? `
           <a href="#/dashboard">Dashboard</a>
-          ${currentUserProfile?.role === 'admin' ? '<a href="#/admin" style="color:var(--primary); font-weight:bold;">Admin Control Panel</a>' : ''}
+          ${isAdmin ? '<a href="#/admin" style="color:var(--primary); font-weight:bold;">Admin Control Panel</a>' : ''}
           <button id="btnLogout" class="btn btn-sm btn-secondary">Logout</button>
         ` : `
           <a href="#/login">Login</a>
@@ -183,13 +208,17 @@ function renderNavbar() {
   });
 }
 
-// 1. Register
+// 1. Registrasi (Dengan Math Captcha Pertambahan / Perkalian)
 function renderRegister() {
   const app = document.getElementById('app');
+  const mathQuestion = generateMathCaptcha();
+
   app.innerHTML = `
-    <div class="card" style="max-width:450px; margin: 2rem auto;">
+    <div class="card" style="max-width:460px; margin: 2rem auto;">
       <h2>Registrasi Akun Baru</h2>
-      <form id="formRegister" style="margin-top:1rem;">
+      <p class="help-text">Buat akun untuk meluncurkan landing page bisnis Anda.</p>
+      
+      <form id="formRegister" style="margin-top:1.25rem;">
         <div class="form-group">
           <label>Nama Bisnis / Brand</label>
           <input type="text" id="regName" class="form-control" required />
@@ -205,9 +234,17 @@ function renderRegister() {
         <div class="form-group">
           <label>Pilih Username (/site/username)</label>
           <input type="text" id="regUsername" class="form-control" placeholder="contoh: bandar-clean" required />
-          <div class="help-text">3-30 karakter huruf kecil, angka, dan '-'</div>
+          <div class="help-text">3-30 karakter huruf kecil, angka, dan tanda '-'</div>
         </div>
-        <button type="submit" class="btn btn-primary" style="width:100%;">Daftar Sekarang</button>
+
+        <!-- Math Captcha Security Box -->
+        <div class="form-group" style="background:#f1f5f9; padding:1rem; border-radius:6px; border:1px solid var(--border);">
+          <label style="color:#0f172a; font-weight:bold;">🛡️ Verifikasi Keamanan (Anti-Spam)</label>
+          <p class="help-text" style="margin-bottom:0.5rem;">Berapakah hasil dari: <strong style="font-size:1.1rem; color:var(--primary);">${mathQuestion} = ?</strong></p>
+          <input type="number" id="regCaptcha" class="form-control" placeholder="Tulis jawaban angka..." required />
+        </div>
+
+        <button type="submit" class="btn btn-primary" style="width:100%; margin-top:0.5rem;">Daftar Sekarang</button>
       </form>
     </div>
   `;
@@ -218,6 +255,14 @@ function renderRegister() {
     const email = document.getElementById('regEmail').value.trim();
     const pass = document.getElementById('regPass').value;
     const username = document.getElementById('regUsername').value.trim().toLowerCase();
+    const captchaInput = Number(document.getElementById('regCaptcha').value.trim());
+
+    // Validasi Jawaban Matematika
+    if (captchaInput !== currentMathCaptcha.answer) {
+      alert(`Jawaban verifikasi keamanan salah! Silakan hitung kembali.`);
+      renderRegister(); // Refresh soal baru
+      return;
+    }
 
     if (!/^[a-z0-9-]{3,30}$/.test(username)) {
       alert('Username tidak valid.');
@@ -311,12 +356,21 @@ function renderLogin() {
   });
 }
 
-// 3. User Dashboard
+// 3. User & Admin Dashboard
 async function renderDashboard() {
   if (!currentUser) return renderLogin();
   const app = document.getElementById('app');
   app.innerHTML = `<div class="card"><p>Memuat data dashboard...</p></div>`;
 
+  const isAdmin = currentUserProfile?.role === 'admin' || currentUser.email === 'bandardeterjen@gmail.com';
+
+  // Jika ADMIN Login: Langsung prioritaskan Admin Control Hub
+  if (isAdmin) {
+    renderAdminDashboard();
+    return;
+  }
+
+  // Dashboard Pengguna Biasa
   const siteDoc = await getDoc(doc(db, 'websites', currentUser.uid));
   const site = siteDoc.data() || {};
   const username = site.username || 'user';
@@ -328,7 +382,6 @@ async function renderDashboard() {
     <div class="card">
       <div style="display:flex; justify-content:space-between; align-items:center;">
         <h2>Selamat Datang, ${currentUserProfile?.name || 'User'}</h2>
-        ${currentUserProfile?.role === 'admin' ? '<a href="#/admin" class="btn btn-sm btn-primary">🛠️ Masuk Admin Control Panel</a>' : ''}
       </div>
       
       <div style="margin-top: 1rem;">
@@ -370,31 +423,26 @@ async function renderDashboard() {
           <p class="help-text">Status: ${site.hero?.imageUrl ? '✅ Gambar Terpasang' : '⚪ Polos Tanpa Gambar (Opsional)'}</p>
           <a href="#/builder" class="btn btn-sm btn-secondary" style="margin-top:0.5rem;">Edit Hero</a>
         </div>
-
         <div class="lp-card" style="text-align:left;">
           <h4>💼 Layanan (${site.services?.length || 0})</h4>
           <p class="help-text">${site.services?.length ? '✅ ' + site.services.length + ' Layanan aktif' : '⚪ Belum ada layanan'}</p>
           <a href="#/builder" class="btn btn-sm btn-secondary" style="margin-top:0.5rem;">Kelola Layanan</a>
         </div>
-
         <div class="lp-card" style="text-align:left;">
           <h4>🛍️ Produk (${site.products?.length || 0}/5)</h4>
           <p class="help-text">${site.products?.length ? '✅ ' + site.products.length + ' Produk' : '⚪ Belum ada produk'}</p>
           <a href="#/builder" class="btn btn-sm btn-secondary" style="margin-top:0.5rem;">Kelola Produk</a>
         </div>
-
         <div class="lp-card" style="text-align:left;">
           <h4>❓ FAQ (${site.faqs?.length || 0})</h4>
           <p class="help-text">${site.faqs?.length ? '✅ ' + site.faqs.length + ' Tanya Jawab' : '⚪ Belum ada FAQ'}</p>
           <a href="#/builder" class="btn btn-sm btn-secondary" style="margin-top:0.5rem;">Kelola FAQ</a>
         </div>
-
         <div class="lp-card" style="text-align:left;">
           <h4>⭐ Testimoni (${site.testimonials?.length || 0})</h4>
           <p class="help-text">${site.testimonials?.length ? '✅ ' + site.testimonials.length + ' Testimoni' : '⚪ Belum ada ulasan'}</p>
           <a href="#/builder" class="btn btn-sm btn-secondary" style="margin-top:0.5rem;">Kelola Testimoni</a>
         </div>
-
         <div class="lp-card" style="text-align:left;">
           <h4>📞 Kontak & WhatsApp</h4>
           <p class="help-text">${site.contact?.whatsapp ? '✅ +' + site.contact.whatsapp : '⚪ Belum diatur'}</p>
@@ -424,6 +472,7 @@ async function renderBuilder() {
 
   const siteDoc = await getDoc(doc(db, 'websites', currentUser.uid));
   const site = siteDoc.data() || {};
+  const isAdmin = currentUserProfile?.role === 'admin' || currentUser.email === 'bandardeterjen@gmail.com';
 
   let products = site.products || [];
   let services = site.services || [];
@@ -433,15 +482,21 @@ async function renderBuilder() {
   app.innerHTML = `
     <div class="card">
       <div style="display:flex; justify-content:space-between; align-items:center;">
-        <h2>Landing Page Builder</h2>
+        <h2>${isAdmin ? 'Edit Website Demo Platform' : 'Landing Page Builder'}</h2>
         <a href="#/dashboard" class="btn btn-sm btn-secondary">Kembali ke Dashboard</a>
       </div>
+
+      ${isAdmin ? `
+        <div style="margin-top:0.75rem; padding:0.6rem 0.85rem; background:#eff6ff; border:1px solid #bfdbfe; border-radius:6px; color:#1e40af; font-size:0.875rem;">
+          💡 <strong>Mode Admin:</strong> Website ini berfungsi sebagai <strong>Demo Resmi Platform</strong> untuk contoh pengguna lain.
+        </div>
+      ` : ''}
       
       <form id="formBuilder" style="margin-top:1.5rem;">
         <!-- SEO & Identitas -->
         <h3>1. Identitas Bisnis & SEO</h3>
         <div class="form-group">
-          <label>Nama Bisnis (Menjadi Title Website)</label>
+          <label>Nama Bisnis / Brand (Menjadi Title Website)</label>
           <input type="text" id="siteName" class="form-control" value="${site.siteName || ''}" required />
         </div>
         <div class="form-group">
@@ -464,7 +519,7 @@ async function renderBuilder() {
         
         <div class="form-group" style="background:#f8fafc; padding:1rem; border-radius:6px; border:1px solid var(--border);">
           <label><strong>Gambar Hero Banner (Opsional / Tidak Wajib)</strong></label>
-          <p class="help-text" style="margin-bottom:0.5rem;">Pilihan 1: Masukkan link URL langsung (Instan & Cepat)</p>
+          <p class="help-text" style="margin-bottom:0.5rem;">Pilihan 1: Masukkan link URL langsung</p>
           <input type="url" id="heroImageUrl" class="form-control" placeholder="https://contoh.com/gambar-hero.jpg" value="${site.hero?.imageUrl || ''}" />
           
           <p class="help-text" style="margin-top:0.75rem; margin-bottom:0.25rem;">Pilihan 2: Atau unggah file dari perangkat</p>
@@ -649,7 +704,6 @@ async function renderBuilder() {
     renderTestis();
   };
 
-  // Submit Handler
   document.getElementById('formBuilder').addEventListener('submit', async (e) => {
     e.preventDefault();
     const btnSave = document.getElementById('btnSaveBuilder');
@@ -729,7 +783,7 @@ async function renderBuilder() {
         updatedAt: serverTimestamp()
       });
 
-      alert('Landing page berhasil disimpan dengan sukses!');
+      alert('Perubahan berhasil disimpan!');
       navigate('#/dashboard');
     } catch (err) {
       alert('Gagal menyimpan: ' + err.message);
@@ -740,30 +794,79 @@ async function renderBuilder() {
   });
 }
 
-// 5. ADMIN CONTROL PANEL (Kelola Semua Website & User: Publish, Draft, Suspend)
+// 5. ADMIN CONTROL PANEL (Fokus Kelola User & Website)
 async function renderAdminDashboard() {
   const app = document.getElementById('app');
   app.innerHTML = `<div class="card"><p>Memuat Admin Dashboard...</p></div>`;
 
-  // Fetch stats & all websites
+  // Fetch data
   const uSnap = await getDocs(collection(db, 'users'));
   const wSnap = await getDocs(collection(db, 'websites'));
   const pSnap = await getDocs(query(collection(db, 'websites'), where('status', '==', 'pending_review')));
   const pubSnap = await getDocs(query(collection(db, 'websites'), where('status', '==', 'published')));
   const susSnap = await getDocs(query(collection(db, 'websites'), where('status', '==', 'suspended')));
 
-  let rowsHtml = '';
+  // Cek info website demo admin
+  const adminSiteDoc = await getDoc(doc(db, 'websites', currentUser.uid));
+  const adminSite = adminSiteDoc.data() || {};
+  const adminDemoUrl = `${BASE_PATH}/#/site/${adminSite.username || 'admin'}`;
+
+  // 1. Baris Tabel Users
+  let usersHtml = '';
+  uSnap.forEach(uDoc => {
+    const u = uDoc.data();
+    const uid = uDoc.id;
+    const isMe = uid === currentUser.uid;
+    const isSuspended = u.status === 'suspended' || u.status === 'banned';
+
+    usersHtml += `
+      <tr>
+        <td>
+          <strong>${u.name || '-'}</strong><br/>
+          <small>${u.email || '-'} (@${u.username || '-'})</small>
+        </td>
+        <td>
+          <span class="badge ${u.role === 'admin' ? 'badge-published' : 'badge-draft'}">${u.role?.toUpperCase() || 'USER'}</span>
+        </td>
+        <td>
+          <span class="badge ${isSuspended ? 'badge-rejected' : 'badge-published'}">${u.status?.toUpperCase() || 'ACTIVE'}</span>
+        </td>
+        <td>
+          ${!isMe ? `
+            <div style="display:flex; gap:4px; flex-wrap:wrap;">
+              ${!isSuspended ? `
+                <button class="btn btn-sm btn-danger btnSuspendUser" data-id="${uid}" data-name="${u.name}">
+                  ⛔ Suspend User
+                </button>
+              ` : `
+                <button class="btn btn-sm btn-success btnReactivateUser" data-id="${uid}">
+                  ✅ Aktifkan
+                </button>
+              `}
+              <button class="btn btn-sm btn-secondary btnToggleRole" data-id="${uid}" data-role="${u.role || 'user'}">
+                ${u.role === 'admin' ? 'Set User' : 'Set Admin'}
+              </button>
+            </div>
+          ` : '<span style="color:var(--text-muted); font-size:0.8rem;">(Akun Anda Saat Ini)</span>'}
+        </td>
+      </tr>
+    `;
+  });
+
+  // 2. Baris Tabel Websites
+  let sitesHtml = '';
   wSnap.forEach(docSnap => {
     const site = docSnap.data();
     const siteId = docSnap.id;
     const isPublished = site.status === 'published';
     const isSuspended = site.status === 'suspended';
     const isDraft = site.status === 'draft';
+    const isAdminDemo = siteId === currentUser.uid;
 
-    rowsHtml += `
+    sitesHtml += `
       <tr>
         <td>
-          <strong>${site.siteName || '-'}</strong><br/>
+          <strong>${site.siteName || '-'}</strong> ${isAdminDemo ? '<span class="badge badge-approved" style="font-size:0.65rem;">DEMO PLATFORM</span>' : ''}<br/>
           <small>@${site.username} (${site.plan?.toUpperCase() || 'FREE'})</small>
         </td>
         <td>
@@ -801,17 +904,24 @@ async function renderAdminDashboard() {
   });
 
   app.innerHTML = `
+    <!-- Header Admin -->
     <div class="card">
       <div style="display:flex; justify-content:space-between; align-items:center;">
-        <h2>Admin Control & Moderation Panel</h2>
-        <a href="#/dashboard" class="btn btn-sm btn-secondary">Kembali ke Dashboard Saya</a>
+        <div>
+          <h2>Pusat Kendali Administrator</h2>
+          <p class="help-text">Pengawasan Platform, Moderasi Konten & Manajemen Pengguna</p>
+        </div>
+        <div>
+          <a href="#/builder" class="btn btn-sm btn-primary">🛠️ Edit Website Demo</a>
+          <a href="${adminDemoUrl}" target="_blank" class="btn btn-sm btn-success">Lihat Website Demo</a>
+        </div>
       </div>
 
-      <!-- Stat Cards -->
+      <!-- Stat Metrics -->
       <div class="lp-grid" style="margin-top:1.5rem;">
         <div class="lp-card">
           <h2 style="color:var(--primary);">${uSnap.size}</h2>
-          <p>Total User</p>
+          <p>Total Pengguna</p>
         </div>
         <div class="lp-card">
           <h2 style="color:var(--badge-pending);">${pSnap.size}</h2>
@@ -828,19 +938,45 @@ async function renderAdminDashboard() {
       </div>
     </div>
 
-    <!-- Antrean Review Cepat -->
+    <!-- Alert Antrean Review -->
     ${pSnap.size > 0 ? `
       <div class="card" style="border: 2px solid var(--badge-pending); background: #fffbeb;">
-        <h3>⚠️ Ada ${pSnap.size} Website Menunggu Moderasi!</h3>
-        <p style="margin: 0.5rem 0 1rem 0;">User telah mengajukan review dan menunggu persetujuan admin.</p>
-        <a href="#/admin/reviews" class="btn btn-primary">Buka Antrean Moderasi Khusus</a>
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <div>
+            <h3 style="color:#b45309;">⚠️ Ada ${pSnap.size} Website Menunggu Moderasi!</h3>
+            <p style="margin-top:0.25rem;">Pengguna telah mengajukan permohonan publikasi website baru.</p>
+          </div>
+          <a href="#/admin/reviews" class="btn btn-primary">Buka Antrean Moderasi</a>
+        </div>
       </div>
     ` : ''}
 
-    <!-- Manajemen Seluruh Website Pengguna -->
+    <!-- Manajemen Akun Pengguna -->
     <div class="card">
-      <h3>Daftar Seluruh Website & Pengguna</h3>
-      <p class="help-text" style="margin-bottom:1rem;">Admin dapat mempublikasikan langsung, mengubah menjadi draft, atau menangguhkan (suspend) website kapan saja.</p>
+      <h3>👥 Kelola Akun Pengguna (Users)</h3>
+      <p class="help-text" style="margin-bottom:1rem;">Tangguhkan atau pulihkan akun user yang terindikasi spam/pelanggaran.</p>
+      
+      <div class="table-responsive">
+        <table>
+          <thead>
+            <tr>
+              <th>Nama & Email</th>
+              <th>Role</th>
+              <th>Status Akun</th>
+              <th>Aksi Admin</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${usersHtml || '<tr><td colspan="4">Belum ada user terdaftar.</td></tr>'}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Manajemen Semua Website Platform -->
+    <div class="card">
+      <h3>🌐 Kelola Seluruh Landing Page Platform</h3>
+      <p class="help-text" style="margin-bottom:1rem;">Admin memiliki hak langsung mempublikasikan, mengembalikan ke draft, atau menangguhkan website.</p>
       
       <div class="table-responsive">
         <table>
@@ -848,25 +984,81 @@ async function renderAdminDashboard() {
             <tr>
               <th>Website & Username</th>
               <th>Status Saat Ini</th>
-              <th>Aksi Admin</th>
+              <th>Aksi Cepat</th>
             </tr>
           </thead>
           <tbody>
-            ${rowsHtml || '<tr><td colspan="3" style="text-align:center;">Belum ada website terdaftar.</td></tr>'}
+            ${sitesHtml || '<tr><td colspan="3">Belum ada website terdaftar.</td></tr>'}
           </tbody>
         </table>
       </div>
     </div>
   `;
 
-  // Listener Tombol Admin Direct Actions:
+  // === ACTION LISTENERS KELOLA USER ===
+  
+  // Suspend User
+  document.querySelectorAll('.btnSuspendUser').forEach(btn => {
+    btn.onclick = async (e) => {
+      const uid = e.target.dataset.id;
+      const name = e.target.dataset.name;
+      if (confirm(`Tangguhkan (Suspend) akun "${name}"? Seluruh website miliknya tidak akan bisa diakses publik.`)) {
+        await updateDoc(doc(db, 'users', uid), { status: 'suspended' });
+        // Nonaktifkan website milik user tersebut secara bersamaan
+        await updateDoc(doc(db, 'websites', uid), { 
+          status: 'suspended', 
+          published: false,
+          moderationNote: 'Akun pemilik website telah dinonaktifkan oleh administrator.'
+        });
 
-  // 1. Direct Publish
+        await addDoc(collection(db, 'moderationLogs'), {
+          adminId: currentUser.uid,
+          userId: uid,
+          action: 'suspend_user',
+          reason: 'Akun user dinonaktifkan',
+          createdAt: serverTimestamp()
+        });
+
+        alert(`User "${name}" berhasil ditangguhkan!`);
+        renderAdminDashboard();
+      }
+    };
+  });
+
+  // Reactivate User
+  document.querySelectorAll('.btnReactivateUser').forEach(btn => {
+    btn.onclick = async (e) => {
+      const uid = e.target.dataset.id;
+      if (confirm(`Aktifkan kembali akun user ini?`)) {
+        await updateDoc(doc(db, 'users', uid), { status: 'active' });
+        alert('Akun user kembali aktif.');
+        renderAdminDashboard();
+      }
+    };
+  });
+
+  // Toggle Role (Admin <-> User)
+  document.querySelectorAll('.btnToggleRole').forEach(btn => {
+    btn.onclick = async (e) => {
+      const uid = e.target.dataset.id;
+      const currentRole = e.target.dataset.role;
+      const newRole = currentRole === 'admin' ? 'user' : 'admin';
+      if (confirm(`Ubah role user ini menjadi "${newRole.toUpperCase()}"?`)) {
+        await updateDoc(doc(db, 'users', uid), { role: newRole });
+        alert(`Role berhasil diubah menjadi ${newRole.toUpperCase()}.`);
+        renderAdminDashboard();
+      }
+    };
+  });
+
+  // === ACTION LISTENERS KELOLA WEBSITE ===
+
+  // Direct Publish
   document.querySelectorAll('.btnDirectPublish').forEach(btn => {
     btn.onclick = async (e) => {
       const siteId = e.target.dataset.id;
       const name = e.target.dataset.name;
-      if (confirm(`Publikasikan website "${name}" sekarang agar bisa diakses umum?`)) {
+      if (confirm(`Publikasikan website "${name}" sekarang?`)) {
         await updateDoc(doc(db, 'websites', siteId), {
           status: 'published',
           published: true,
@@ -883,31 +1075,23 @@ async function renderAdminDashboard() {
           createdAt: serverTimestamp()
         });
 
-        alert(`Website "${name}" telah berhasil DIPUBLIKASIKAN!`);
+        alert(`Website "${name}" telah DIPUBLIKASIKAN!`);
         renderAdminDashboard();
       }
     };
   });
 
-  // 2. Direct Draft
+  // Direct Draft
   document.querySelectorAll('.btnDirectDraft').forEach(btn => {
     btn.onclick = async (e) => {
       const siteId = e.target.dataset.id;
       const name = e.target.dataset.name;
-      if (confirm(`Ubah website "${name}" kembali menjadi DRAFT (Website ditarik dari publik)?`)) {
+      if (confirm(`Ubah website "${name}" kembali menjadi DRAFT?`)) {
         await updateDoc(doc(db, 'websites', siteId), {
           status: 'draft',
           published: false,
           approved: false,
           updatedAt: serverTimestamp()
-        });
-
-        await addDoc(collection(db, 'moderationLogs'), {
-          adminId: currentUser.uid,
-          websiteId: siteId,
-          action: 'set_draft',
-          reason: 'Website ditarik kembali ke draft oleh admin',
-          createdAt: serverTimestamp()
         });
 
         alert(`Website "${name}" telah diubah menjadi DRAFT.`);
@@ -916,12 +1100,12 @@ async function renderAdminDashboard() {
     };
   });
 
-  // 3. Direct Suspend
+  // Direct Suspend
   document.querySelectorAll('.btnDirectSuspend').forEach(btn => {
     btn.onclick = async (e) => {
       const siteId = e.target.dataset.id;
       const name = e.target.dataset.name;
-      const reason = prompt(`Masukkan alasan penangguhan (Suspend) untuk "${name}":\n(Contoh: Penipuan, Judi, Konten Ilegal, Spam)`);
+      const reason = prompt(`Alasan penangguhan (Suspend) untuk "${name}":`);
       if (reason) {
         await updateDoc(doc(db, 'websites', siteId), {
           status: 'suspended',
@@ -931,40 +1115,23 @@ async function renderAdminDashboard() {
           reviewedAt: serverTimestamp()
         });
 
-        await addDoc(collection(db, 'moderationLogs'), {
-          adminId: currentUser.uid,
-          websiteId: siteId,
-          action: 'suspend',
-          reason,
-          createdAt: serverTimestamp()
-        });
-
         alert(`Website "${name}" telah di-SUSPEND!`);
         renderAdminDashboard();
       }
     };
   });
 
-  // 4. Direct Unsuspend
+  // Direct Unsuspend
   document.querySelectorAll('.btnDirectUnsuspend').forEach(btn => {
     btn.onclick = async (e) => {
       const siteId = e.target.dataset.id;
-      if (confirm(`Buka penangguhan (Unsuspend) website ini dan kembalikan ke status Draft?`)) {
+      if (confirm(`Buka penangguhan website ini?`)) {
         await updateDoc(doc(db, 'websites', siteId), {
           status: 'draft',
           published: false,
           moderationNote: '',
           updatedAt: serverTimestamp()
         });
-
-        await addDoc(collection(db, 'moderationLogs'), {
-          adminId: currentUser.uid,
-          websiteId: siteId,
-          action: 'unsuspend',
-          reason: 'Penangguhan dicabut oleh admin',
-          createdAt: serverTimestamp()
-        });
-
         alert('Website telah di-unsuspend dan berstatus Draft.');
         renderAdminDashboard();
       }
@@ -972,7 +1139,7 @@ async function renderAdminDashboard() {
   });
 }
 
-// Antrean Moderasi Khusus (Pending Review)
+// Antrean Moderasi Khusus
 async function renderAdminReviews() {
   const app = document.getElementById('app');
   app.innerHTML = `<div class="card"><p>Memuat antrean...</p></div>`;
@@ -1075,6 +1242,7 @@ async function renderPublicLandingPage(username) {
     const siteDoc = snap.docs[0];
     const site = siteDoc.data();
 
+    // Set Title Browser
     document.title = site.siteName || "Official Website";
     
     const metaDesc = site.description || `Website resmi ${site.siteName}`;
@@ -1091,7 +1259,7 @@ async function renderPublicLandingPage(username) {
     }
 
     const isOwner = currentUser && currentUser.uid === site.ownerId;
-    const isAdminUser = currentUserProfile?.role === 'admin';
+    const isAdminUser = currentUserProfile?.role === 'admin' || currentUser?.email === 'bandardeterjen@gmail.com';
 
     if (site.status !== 'published' && !isOwner && !isAdminUser) {
       root.innerHTML = `<div class="card" style="text-align:center; margin:3rem auto; max-width:500px;"><h2>Website Belum Publik</h2><p>Landing page ini sedang dalam proses moderasi atau masih berstatus draft.</p></div>`;
