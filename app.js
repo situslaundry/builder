@@ -32,16 +32,26 @@ let currentUser = null;
 let currentUserProfile = null;
 
 // --- ROUTER ENGINE ---
+// --- ROUTER ENGINE LENGKAP (Support Path, Query, & Hash) ---
 const router = async () => {
   const path = window.location.pathname;
   const hash = window.location.hash || '';
+  const search = window.location.search || '';
 
-  // Cek apakah rute publik /site/:username dari path biasa ATAU dari hash #/site/:username
+  // 1. Cek dari Path (/builder/site/admin)
   let siteMatch = path.match(/\/site\/([a-zA-Z0-9_-]+)/);
+
+  // 2. Cek dari Hash (#/site/admin)
   if (!siteMatch && hash.startsWith('#/site/')) {
     siteMatch = hash.match(/#\/site\/([a-zA-Z0-9_-]+)/);
   }
 
+  // 3. Cek dari Query (?/site/admin atau ?p=/site/admin)
+  if (!siteMatch && search.includes('site/')) {
+    siteMatch = search.match(/site\/([a-zA-Z0-9_-]+)/);
+  }
+
+  // Jika cocok rute website publik
   if (siteMatch) {
     const targetUsername = siteMatch[1].toLowerCase();
     renderPublicSite(targetUsername);
