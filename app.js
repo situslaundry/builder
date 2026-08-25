@@ -12,6 +12,102 @@ import {
   ref, uploadBytes, getDownloadURL 
 } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-storage.js";
 
+// ========================================================
+// TOAST NOTIFICATION & MODAL ENGINE
+// ========================================================
+export function showToast(message, type = 'info', duration = 3500) {
+  const container = document.getElementById('toast-container');
+  if (!container) return;
+
+  const icons = {
+    success: '✅',
+    error: '❌',
+    warning: '⚠️',
+    info: 'ℹ️'
+  };
+
+  const toast = document.createElement('div');
+  toast.className = `toast toast-${type}`;
+  toast.innerHTML = `
+    <div class="toast-content">
+      <span>${icons[type] || 'ℹ️'}</span>
+      <span>${message}</span>
+    </div>
+    <button class="toast-close">&times;</button>
+  `;
+
+  container.appendChild(toast);
+
+  const removeToast = () => {
+    toast.style.animation = 'toastFadeOut 0.3s forwards';
+    setTimeout(() => toast.remove(), 300);
+  };
+
+  toast.querySelector('.toast-close').onclick = removeToast;
+  setTimeout(removeToast, duration);
+}
+
+export function showConfirm(title, message, onConfirm, confirmText = 'Ya, Lanjutkan', isDanger = false) {
+  const container = document.getElementById('modal-container');
+  const modal = document.createElement('div');
+  modal.className = 'modal-overlay';
+  modal.innerHTML = `
+    <div class="modal-card">
+      <div class="modal-title">${title}</div>
+      <div class="modal-body">${message}</div>
+      <div class="modal-actions">
+        <button class="btn btn-sm btn-secondary btnCancel">Batal</button>
+        <button class="btn btn-sm ${isDanger ? 'btn-danger' : 'btn-primary'} btnConfirm">${confirmText}</button>
+      </div>
+    </div>
+  `;
+
+  container.appendChild(modal);
+
+  modal.querySelector('.btnCancel').onclick = () => modal.remove();
+  modal.querySelector('.btnConfirm').onclick = () => {
+    modal.remove();
+    onConfirm();
+  };
+}
+
+export function showPrompt(title, message, defaultValue = '', onConfirm, placeholder = 'Tuliskan di sini...') {
+  const container = document.getElementById('modal-container');
+  const modal = document.createElement('div');
+  modal.className = 'modal-overlay';
+  modal.innerHTML = `
+    <div class="modal-card">
+      <div class="modal-title">${title}</div>
+      <div class="modal-body">
+        <p style="margin-bottom:0.75rem;">${message}</p>
+        <input type="text" class="form-control modal-input" placeholder="${placeholder}" value="${defaultValue}" />
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-sm btn-secondary btnCancel">Batal</button>
+        <button class="btn btn-sm btn-primary btnConfirm">Kirim</button>
+      </div>
+    </div>
+  `;
+
+  container.appendChild(modal);
+  const input = modal.querySelector('.modal-input');
+  input.focus();
+
+  modal.querySelector('.btnCancel').onclick = () => modal.remove();
+  modal.querySelector('.btnConfirm').onclick = () => {
+    const val = input.value.trim();
+    if (val) {
+      modal.remove();
+      onConfirm(val);
+    } else {
+      showToast('Input tidak boleh kosong!', 'warning');
+    }
+  };
+}
+
+// ========================================================
+// ROUTING & APP STATE
+// ========================================================
 const getBasePath = () => {
   const path = window.location.pathname;
   const segments = path.split('/').filter(Boolean);
@@ -34,19 +130,18 @@ let currentUser = null;
 let currentUserProfile = null;
 let currentMathCaptcha = { question: '', answer: 0 };
 
-// Generator Soal Matematika (Pertambahan / Perkalian)
 function generateMathCaptcha() {
   const isMultiplication = Math.random() > 0.5;
   let num1, num2, answer, question;
 
   if (isMultiplication) {
-    num1 = Math.floor(Math.random() * 8) + 2; // 2 - 9
-    num2 = Math.floor(Math.random() * 8) + 2; // 2 - 9
+    num1 = Math.floor(Math.random() * 8) + 2;
+    num2 = Math.floor(Math.random() * 8) + 2;
     answer = num1 * num2;
     question = `${num1} × ${num2}`;
   } else {
-    num1 = Math.floor(Math.random() * 30) + 5; // 5 - 34
-    num2 = Math.floor(Math.random() * 30) + 5; // 5 - 34
+    num1 = Math.floor(Math.random() * 30) + 5;
+    num2 = Math.floor(Math.random() * 30) + 5;
     answer = num1 + num2;
     question = `${num1} + ${num2}`;
   }
@@ -55,7 +150,6 @@ function generateMathCaptcha() {
   return question;
 }
 
-// Auto Compress Image Client-Side
 async function compressImage(file, maxWidth = 1200, quality = 0.8) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -89,7 +183,6 @@ async function compressImage(file, maxWidth = 1200, quality = 0.8) {
   });
 }
 
-// Helper Upload Image ke Firebase Storage
 async function uploadImageFile(file, path) {
   if (!file) return null;
   const compressedBlob = await compressImage(file);
@@ -104,7 +197,6 @@ async function uploadImageFile(file, path) {
   return await getDownloadURL(storageRef);
 }
 
-// Router
 const router = async () => {
   const path = window.location.pathname;
   const hash = window.location.hash || '';
@@ -204,11 +296,12 @@ function renderNavbar() {
 
   document.getElementById('btnLogout')?.addEventListener('click', async () => {
     await signOut(auth);
+    showToast('Berhasil keluar dari akun.', 'info');
     navigate('#/login');
   });
 }
 
-// 1. Registrasi (Dengan Math Captcha Pertambahan / Perkalian)
+// 1. Registrasi (Dengan Math Captcha & Toast)
 function renderRegister() {
   const app = document.getElementById('app');
   const mathQuestion = generateMathCaptcha();
@@ -237,7 +330,6 @@ function renderRegister() {
           <div class="help-text">3-30 karakter huruf kecil, angka, dan tanda '-'</div>
         </div>
 
-        <!-- Math Captcha Security Box -->
         <div class="form-group" style="background:#f1f5f9; padding:1rem; border-radius:6px; border:1px solid var(--border);">
           <label style="color:#0f172a; font-weight:bold;">🛡️ Verifikasi Keamanan (Anti-Spam)</label>
           <p class="help-text" style="margin-bottom:0.5rem;">Berapakah hasil dari: <strong style="font-size:1.1rem; color:var(--primary);">${mathQuestion} = ?</strong></p>
@@ -257,26 +349,25 @@ function renderRegister() {
     const username = document.getElementById('regUsername').value.trim().toLowerCase();
     const captchaInput = Number(document.getElementById('regCaptcha').value.trim());
 
-    // Validasi Jawaban Matematika
     if (captchaInput !== currentMathCaptcha.answer) {
-      alert(`Jawaban verifikasi keamanan salah! Silakan hitung kembali.`);
-      renderRegister(); // Refresh soal baru
+      showToast('Jawaban verifikasi keamanan salah! Silakan hitung kembali.', 'error');
+      renderRegister();
       return;
     }
 
     if (!/^[a-z0-9-]{3,30}$/.test(username)) {
-      alert('Username tidak valid.');
+      showToast('Username harus 3-30 karakter (huruf kecil, angka, dan -).', 'warning');
       return;
     }
     if (RESERVED_USERNAMES.includes(username)) {
-      alert('Username dicadangkan sistem.');
+      showToast('Username ini dicadangkan oleh sistem.', 'warning');
       return;
     }
 
     try {
       const uDoc = await getDoc(doc(db, 'usernames', username));
       if (uDoc.exists()) {
-        alert('Username sudah terpakai.');
+        showToast('Username sudah terpakai oleh pengguna lain.', 'warning');
         return;
       }
 
@@ -318,9 +409,10 @@ function renderRegister() {
         updatedAt: serverTimestamp()
       });
 
+      showToast('Akun berhasil terdaftar! Selamat datang.', 'success');
       window.location.hash = '#/dashboard';
     } catch (err) {
-      alert('Registrasi gagal: ' + err.message);
+      showToast('Registrasi gagal: ' + err.message, 'error');
     }
   });
 }
@@ -349,9 +441,10 @@ function renderLogin() {
     e.preventDefault();
     try {
       await signInWithEmailAndPassword(auth, document.getElementById('logEmail').value, document.getElementById('logPass').value);
+      showToast('Berhasil masuk.', 'success');
       window.location.hash = '#/dashboard';
     } catch (err) {
-      alert('Login gagal: ' + err.message);
+      showToast('Login gagal: ' + err.message, 'error');
     }
   });
 }
@@ -364,13 +457,11 @@ async function renderDashboard() {
 
   const isAdmin = currentUserProfile?.role === 'admin' || currentUser.email === 'bandardeterjen@gmail.com';
 
-  // Jika ADMIN Login: Langsung prioritaskan Admin Control Hub
   if (isAdmin) {
     renderAdminDashboard();
     return;
   }
 
-  // Dashboard Pengguna Biasa
   const siteDoc = await getDoc(doc(db, 'websites', currentUser.uid));
   const site = siteDoc.data() || {};
   const username = site.username || 'user';
@@ -414,7 +505,6 @@ async function renderDashboard() {
       </div>
     </div>
 
-    <!-- Section Card Shortcuts -->
     <div class="card">
       <h3>Komponen & Layanan Landing Page</h3>
       <div class="lp-grid" style="margin-top:1rem;">
@@ -452,16 +542,20 @@ async function renderDashboard() {
     </div>
   `;
 
-  document.getElementById('btnSubmitReview')?.addEventListener('click', async () => {
-    if (confirm('Ajukan landing page ini untuk dimoderasi oleh admin?')) {
-      await updateDoc(doc(db, 'websites', currentUser.uid), {
-        status: 'pending_review',
-        published: false,
-        updatedAt: serverTimestamp()
-      });
-      alert('Landing page berhasil diajukan untuk review.');
-      renderDashboard();
-    }
+  document.getElementById('btnSubmitReview')?.addEventListener('click', () => {
+    showConfirm(
+      'Ajukan Review Website',
+      'Apakah Anda yakin ingin mengajukan landing page ini untuk dimoderasi oleh admin?',
+      async () => {
+        await updateDoc(doc(db, 'websites', currentUser.uid), {
+          status: 'pending_review',
+          published: false,
+          updatedAt: serverTimestamp()
+        });
+        showToast('Landing page berhasil diajukan untuk review!', 'success');
+        renderDashboard();
+      }
+    );
   });
 }
 
@@ -493,7 +587,6 @@ async function renderBuilder() {
       ` : ''}
       
       <form id="formBuilder" style="margin-top:1.5rem;">
-        <!-- SEO & Identitas -->
         <h3>1. Identitas Bisnis & SEO</h3>
         <div class="form-group">
           <label>Nama Bisnis / Brand (Menjadi Title Website)</label>
@@ -506,7 +599,6 @@ async function renderBuilder() {
 
         <hr style="margin: 2rem 0; border: none; border-top: 1px solid var(--border);" />
 
-        <!-- Hero Section -->
         <h3>2. Hero Section</h3>
         <div class="form-group">
           <label>Judul Hero Banner</label>
@@ -528,7 +620,6 @@ async function renderBuilder() {
 
         <hr style="margin: 2rem 0; border: none; border-top: 1px solid var(--border);" />
 
-        <!-- Tentang Kami -->
         <h3>3. Tentang Kami</h3>
         <div class="form-group">
           <label>Judul Section</label>
@@ -541,7 +632,6 @@ async function renderBuilder() {
 
         <hr style="margin: 2rem 0; border: none; border-top: 1px solid var(--border);" />
 
-        <!-- Layanan -->
         <div style="display:flex; justify-content:space-between; align-items:center;">
           <h3>4. Layanan & Keunggulan</h3>
           <button type="button" id="btnAddService" class="btn btn-sm btn-secondary">+ Tambah Layanan</button>
@@ -550,7 +640,6 @@ async function renderBuilder() {
 
         <hr style="margin: 2rem 0; border: none; border-top: 1px solid var(--border);" />
 
-        <!-- Produk -->
         <div style="display:flex; justify-content:space-between; align-items:center;">
           <h3>5. Produk & Paket (Maks 5 Produk)</h3>
           <button type="button" id="btnAddProduct" class="btn btn-sm btn-secondary">+ Tambah Produk</button>
@@ -559,7 +648,6 @@ async function renderBuilder() {
 
         <hr style="margin: 2rem 0; border: none; border-top: 1px solid var(--border);" />
 
-        <!-- FAQ -->
         <div style="display:flex; justify-content:space-between; align-items:center;">
           <h3>6. FAQ (Tanya Jawab)</h3>
           <button type="button" id="btnAddFaq" class="btn btn-sm btn-secondary">+ Tambah FAQ</button>
@@ -568,7 +656,6 @@ async function renderBuilder() {
 
         <hr style="margin: 2rem 0; border: none; border-top: 1px solid var(--border);" />
 
-        <!-- Testimoni -->
         <div style="display:flex; justify-content:space-between; align-items:center;">
           <h3>7. Testimoni Pelanggan</h3>
           <button type="button" id="btnAddTesti" class="btn btn-sm btn-secondary">+ Tambah Testimoni</button>
@@ -577,7 +664,6 @@ async function renderBuilder() {
 
         <hr style="margin: 2rem 0; border: none; border-top: 1px solid var(--border);" />
 
-        <!-- Kontak -->
         <h3>8. Kontak & Lokasi</h3>
         <div class="form-group">
           <label>Nomor WhatsApp (Format: 628xxxxxxxxxx)</label>
@@ -691,7 +777,10 @@ async function renderBuilder() {
     renderServices();
   };
   document.getElementById('btnAddProduct').onclick = () => {
-    if (products.length >= 5) return alert('Paket Free dibatasi maksimal 5 produk.');
+    if (products.length >= 5) {
+      showToast('Paket Free dibatasi maksimal 5 produk.', 'warning');
+      return;
+    }
     products.push({ name: '', price: '', description: '', imageUrl: '' });
     renderProducts();
   };
@@ -709,6 +798,7 @@ async function renderBuilder() {
     const btnSave = document.getElementById('btnSaveBuilder');
     btnSave.disabled = true;
     btnSave.innerText = "⏳ Sedang Menyimpan Data...";
+    showToast('Sedang memproses dan menyimpan konten...', 'info', 2000);
 
     try {
       let heroImgUrl = document.getElementById('heroImageUrl').value.trim();
@@ -783,10 +873,10 @@ async function renderBuilder() {
         updatedAt: serverTimestamp()
       });
 
-      alert('Perubahan berhasil disimpan!');
+      showToast('Perubahan berhasil disimpan!', 'success');
       navigate('#/dashboard');
     } catch (err) {
-      alert('Gagal menyimpan: ' + err.message);
+      showToast('Gagal menyimpan: ' + err.message, 'error');
     } finally {
       btnSave.disabled = false;
       btnSave.innerText = "Simpan Seluruh Perubahan";
@@ -794,24 +884,21 @@ async function renderBuilder() {
   });
 }
 
-// 5. ADMIN CONTROL PANEL (Fokus Kelola User & Website)
+// 5. ADMIN CONTROL PANEL
 async function renderAdminDashboard() {
   const app = document.getElementById('app');
   app.innerHTML = `<div class="card"><p>Memuat Admin Dashboard...</p></div>`;
 
-  // Fetch data
   const uSnap = await getDocs(collection(db, 'users'));
   const wSnap = await getDocs(collection(db, 'websites'));
   const pSnap = await getDocs(query(collection(db, 'websites'), where('status', '==', 'pending_review')));
   const pubSnap = await getDocs(query(collection(db, 'websites'), where('status', '==', 'published')));
   const susSnap = await getDocs(query(collection(db, 'websites'), where('status', '==', 'suspended')));
 
-  // Cek info website demo admin
   const adminSiteDoc = await getDoc(doc(db, 'websites', currentUser.uid));
   const adminSite = adminSiteDoc.data() || {};
   const adminDemoUrl = `${BASE_PATH}/#/site/${adminSite.username || 'admin'}`;
 
-  // 1. Baris Tabel Users
   let usersHtml = '';
   uSnap.forEach(uDoc => {
     const u = uDoc.data();
@@ -853,7 +940,6 @@ async function renderAdminDashboard() {
     `;
   });
 
-  // 2. Baris Tabel Websites
   let sitesHtml = '';
   wSnap.forEach(docSnap => {
     const site = docSnap.data();
@@ -904,7 +990,6 @@ async function renderAdminDashboard() {
   });
 
   app.innerHTML = `
-    <!-- Header Admin -->
     <div class="card">
       <div style="display:flex; justify-content:space-between; align-items:center;">
         <div>
@@ -917,7 +1002,6 @@ async function renderAdminDashboard() {
         </div>
       </div>
 
-      <!-- Stat Metrics -->
       <div class="lp-grid" style="margin-top:1.5rem;">
         <div class="lp-card">
           <h2 style="color:var(--primary);">${uSnap.size}</h2>
@@ -938,7 +1022,6 @@ async function renderAdminDashboard() {
       </div>
     </div>
 
-    <!-- Alert Antrean Review -->
     ${pSnap.size > 0 ? `
       <div class="card" style="border: 2px solid var(--badge-pending); background: #fffbeb;">
         <div style="display:flex; justify-content:space-between; align-items:center;">
@@ -951,7 +1034,6 @@ async function renderAdminDashboard() {
       </div>
     ` : ''}
 
-    <!-- Manajemen Akun Pengguna -->
     <div class="card">
       <h3>👥 Kelola Akun Pengguna (Users)</h3>
       <p class="help-text" style="margin-bottom:1rem;">Tangguhkan atau pulihkan akun user yang terindikasi spam/pelanggaran.</p>
@@ -973,7 +1055,6 @@ async function renderAdminDashboard() {
       </div>
     </div>
 
-    <!-- Manajemen Semua Website Platform -->
     <div class="card">
       <h3>🌐 Kelola Seluruh Landing Page Platform</h3>
       <p class="help-text" style="margin-bottom:1rem;">Admin memiliki hak langsung mempublikasikan, mengembalikan ke draft, atau menangguhkan website.</p>
@@ -995,70 +1076,69 @@ async function renderAdminDashboard() {
     </div>
   `;
 
-  // === ACTION LISTENERS KELOLA USER ===
-  
-  // Suspend User
+  // Listeners User Management
   document.querySelectorAll('.btnSuspendUser').forEach(btn => {
-    btn.onclick = async (e) => {
+    btn.onclick = (e) => {
       const uid = e.target.dataset.id;
       const name = e.target.dataset.name;
-      if (confirm(`Tangguhkan (Suspend) akun "${name}"? Seluruh website miliknya tidak akan bisa diakses publik.`)) {
-        await updateDoc(doc(db, 'users', uid), { status: 'suspended' });
-        // Nonaktifkan website milik user tersebut secara bersamaan
-        await updateDoc(doc(db, 'websites', uid), { 
-          status: 'suspended', 
-          published: false,
-          moderationNote: 'Akun pemilik website telah dinonaktifkan oleh administrator.'
-        });
+      showConfirm(
+        'Tangguhkan Pengguna',
+        `Apakah Anda yakin ingin menangguhkan (Suspend) akun "${name}"? Seluruh website miliknya tidak akan bisa diakses publik.`,
+        async () => {
+          await updateDoc(doc(db, 'users', uid), { status: 'suspended' });
+          await updateDoc(doc(db, 'websites', uid), { 
+            status: 'suspended', 
+            published: false,
+            moderationNote: 'Akun pemilik website telah dinonaktifkan oleh administrator.'
+          });
 
-        await addDoc(collection(db, 'moderationLogs'), {
-          adminId: currentUser.uid,
-          userId: uid,
-          action: 'suspend_user',
-          reason: 'Akun user dinonaktifkan',
-          createdAt: serverTimestamp()
-        });
+          await addDoc(collection(db, 'moderationLogs'), {
+            adminId: currentUser.uid,
+            userId: uid,
+            action: 'suspend_user',
+            reason: 'Akun user dinonaktifkan',
+            createdAt: serverTimestamp()
+          });
 
-        alert(`User "${name}" berhasil ditangguhkan!`);
-        renderAdminDashboard();
-      }
+          showToast(`Akun "${name}" telah ditangguhkan!`, 'warning');
+          renderAdminDashboard();
+        },
+        'Suspend Akun',
+        true
+      );
     };
   });
 
-  // Reactivate User
   document.querySelectorAll('.btnReactivateUser').forEach(btn => {
-    btn.onclick = async (e) => {
+    btn.onclick = (e) => {
       const uid = e.target.dataset.id;
-      if (confirm(`Aktifkan kembali akun user ini?`)) {
+      showConfirm('Aktifkan Akun', 'Aktifkan kembali akun pengguna ini?', async () => {
         await updateDoc(doc(db, 'users', uid), { status: 'active' });
-        alert('Akun user kembali aktif.');
+        showToast('Akun user kembali aktif.', 'success');
         renderAdminDashboard();
-      }
+      });
     };
   });
 
-  // Toggle Role (Admin <-> User)
   document.querySelectorAll('.btnToggleRole').forEach(btn => {
-    btn.onclick = async (e) => {
+    btn.onclick = (e) => {
       const uid = e.target.dataset.id;
       const currentRole = e.target.dataset.role;
       const newRole = currentRole === 'admin' ? 'user' : 'admin';
-      if (confirm(`Ubah role user ini menjadi "${newRole.toUpperCase()}"?`)) {
+      showConfirm('Ubah Peran Pengguna', `Ubah role pengguna ini menjadi "${newRole.toUpperCase()}"?`, async () => {
         await updateDoc(doc(db, 'users', uid), { role: newRole });
-        alert(`Role berhasil diubah menjadi ${newRole.toUpperCase()}.`);
+        showToast(`Role berhasil diubah menjadi ${newRole.toUpperCase()}.`, 'success');
         renderAdminDashboard();
-      }
+      });
     };
   });
 
-  // === ACTION LISTENERS KELOLA WEBSITE ===
-
-  // Direct Publish
+  // Listeners Website Management
   document.querySelectorAll('.btnDirectPublish').forEach(btn => {
-    btn.onclick = async (e) => {
+    btn.onclick = (e) => {
       const siteId = e.target.dataset.id;
       const name = e.target.dataset.name;
-      if (confirm(`Publikasikan website "${name}" sekarang?`)) {
+      showConfirm('Publikasikan Website', `Publikasikan website "${name}" sekarang agar dapat diakses umum?`, async () => {
         await updateDoc(doc(db, 'websites', siteId), {
           status: 'published',
           published: true,
@@ -1075,18 +1155,17 @@ async function renderAdminDashboard() {
           createdAt: serverTimestamp()
         });
 
-        alert(`Website "${name}" telah DIPUBLIKASIKAN!`);
+        showToast(`Website "${name}" telah DIPUBLIKASIKAN!`, 'success');
         renderAdminDashboard();
-      }
+      }, 'Publikasikan');
     };
   });
 
-  // Direct Draft
   document.querySelectorAll('.btnDirectDraft').forEach(btn => {
-    btn.onclick = async (e) => {
+    btn.onclick = (e) => {
       const siteId = e.target.dataset.id;
       const name = e.target.dataset.name;
-      if (confirm(`Ubah website "${name}" kembali menjadi DRAFT?`)) {
+      showConfirm('Kembalikan ke Draft', `Ubah website "${name}" kembali menjadi DRAFT (Ditarik dari publik)?`, async () => {
         await updateDoc(doc(db, 'websites', siteId), {
           status: 'draft',
           published: false,
@@ -1094,47 +1173,50 @@ async function renderAdminDashboard() {
           updatedAt: serverTimestamp()
         });
 
-        alert(`Website "${name}" telah diubah menjadi DRAFT.`);
+        showToast(`Website "${name}" telah diubah menjadi DRAFT.`, 'info');
         renderAdminDashboard();
-      }
+      });
     };
   });
 
-  // Direct Suspend
   document.querySelectorAll('.btnDirectSuspend').forEach(btn => {
-    btn.onclick = async (e) => {
+    btn.onclick = (e) => {
       const siteId = e.target.dataset.id;
       const name = e.target.dataset.name;
-      const reason = prompt(`Alasan penangguhan (Suspend) untuk "${name}":`);
-      if (reason) {
-        await updateDoc(doc(db, 'websites', siteId), {
-          status: 'suspended',
-          published: false,
-          moderationNote: reason,
-          reviewedBy: currentUser.uid,
-          reviewedAt: serverTimestamp()
-        });
+      showPrompt(
+        'Penangguhan Website (Suspend)',
+        `Tuliskan alasan penangguhan untuk website "${name}":`,
+        'Melanggar kebijakan platform / Spam',
+        async (reason) => {
+          await updateDoc(doc(db, 'websites', siteId), {
+            status: 'suspended',
+            published: false,
+            moderationNote: reason,
+            reviewedBy: currentUser.uid,
+            reviewedAt: serverTimestamp()
+          });
 
-        alert(`Website "${name}" telah di-SUSPEND!`);
-        renderAdminDashboard();
-      }
+          showToast(`Website "${name}" telah di-SUSPEND!`, 'warning');
+          renderAdminDashboard();
+        },
+        'Contoh: Penipuan, Judi, Konten Ilegal'
+      );
     };
   });
 
-  // Direct Unsuspend
   document.querySelectorAll('.btnDirectUnsuspend').forEach(btn => {
-    btn.onclick = async (e) => {
+    btn.onclick = (e) => {
       const siteId = e.target.dataset.id;
-      if (confirm(`Buka penangguhan website ini?`)) {
+      showConfirm('Buka Penangguhan', 'Buka penangguhan website ini dan kembalikan ke status Draft?', async () => {
         await updateDoc(doc(db, 'websites', siteId), {
           status: 'draft',
           published: false,
           moderationNote: '',
           updatedAt: serverTimestamp()
         });
-        alert('Website telah di-unsuspend dan berstatus Draft.');
+        showToast('Website telah di-unsuspend dan berstatus Draft.', 'success');
         renderAdminDashboard();
-      }
+      });
     };
   });
 }
@@ -1187,9 +1269,9 @@ async function renderAdminReviews() {
   });
 
   document.querySelectorAll('.btnApprove').forEach(b => {
-    b.onclick = async (e) => {
+    b.onclick = (e) => {
       const siteId = e.target.dataset.id;
-      if (confirm('Setujui dan publikasikan landing page ini?')) {
+      showConfirm('Setujui Website', 'Setujui dan publikasikan landing page ini?', async () => {
         await updateDoc(doc(db, 'websites', siteId), {
           status: 'published',
           published: true,
@@ -1197,17 +1279,16 @@ async function renderAdminReviews() {
           reviewedBy: currentUser.uid,
           reviewedAt: serverTimestamp()
         });
-        alert('Landing page berhasil disetujui & dipublikasikan!');
+        showToast('Landing page berhasil disetujui & dipublikasikan!', 'success');
         renderAdminReviews();
-      }
+      }, 'Setujui & Publish');
     };
   });
 
   document.querySelectorAll('.btnReject').forEach(b => {
-    b.onclick = async (e) => {
+    b.onclick = (e) => {
       const siteId = e.target.dataset.id;
-      const reason = prompt('Alasan penolakan:');
-      if (reason) {
+      showPrompt('Penolakan Landing Page', 'Masukkan alasan penolakan website:', '', async (reason) => {
         await updateDoc(doc(db, 'websites', siteId), {
           status: 'rejected',
           published: false,
@@ -1216,9 +1297,9 @@ async function renderAdminReviews() {
           reviewedBy: currentUser.uid,
           reviewedAt: serverTimestamp()
         });
-        alert('Landing page ditolak.');
+        showToast('Landing page ditolak.', 'warning');
         renderAdminReviews();
-      }
+      }, 'Tulis alasan penolakan...');
     };
   });
 }
@@ -1242,7 +1323,6 @@ async function renderPublicLandingPage(username) {
     const siteDoc = snap.docs[0];
     const site = siteDoc.data();
 
-    // Set Title Browser
     document.title = site.siteName || "Official Website";
     
     const metaDesc = site.description || `Website resmi ${site.siteName}`;
@@ -1388,14 +1468,13 @@ async function renderPublicLandingPage(username) {
     `;
 
     document.getElementById('btnReport')?.addEventListener('click', () => {
-      const reason = prompt("Alasan Laporan (Penipuan/Spam/Judi/Konten Ilegal):");
-      if (reason) {
+      showPrompt('Laporkan Halaman Ini', 'Pilih atau tuliskan alasan laporan Anda:', 'Konten Tidak Sesuai', (reason) => {
         addDoc(collection(db, 'reports'), {
           websiteId: siteDoc.id,
           reason,
           createdAt: serverTimestamp()
-        }).then(() => alert('Laporan terkirim.'));
-      }
+        }).then(() => showToast('Laporan telah dikirim untuk ditinjau.', 'success'));
+      }, 'Contoh: Penipuan, Judi, Spam, Konten Ilegal');
     });
 
   } catch (err) {
