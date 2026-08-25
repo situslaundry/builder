@@ -58,18 +58,15 @@ const router = async () => {
     siteMatch = search.match(/site\/([a-zA-Z0-9_-]+)/);
   }
 
+  // JIKA SEDANG MEMBUKA LANDING PAGE PUBLIK
   if (siteMatch) {
     const targetUsername = siteMatch[1].toLowerCase();
     renderPublicLandingPage(targetUsername);
     return;
   }
 
-  // Reset meta tags ke default jika kembali ke admin/dashboard
+  // JIKA DI DASHBOARD / ADMIN PANEL
   document.title = "Bandar Builder - Landing Page Engine";
-  document.getElementById('meta-desc')?.setAttribute('content', 'Platform Pembuat Landing Page Bisnis & UMKM');
-  document.getElementById('og-title')?.setAttribute('content', 'Bandar Builder');
-  document.getElementById('og-desc')?.setAttribute('content', 'Platform Pembuat Landing Page Bisnis & UMKM');
-
   renderNavbar();
 
   if (hash === '#/register') renderRegister();
@@ -171,7 +168,7 @@ function renderRegister() {
         </div>
         <div class="form-group">
           <label>Pilih Username (/site/username)</label>
-          <input type="text" id="regUsername" class="form-control" placeholder="contoh: bandar-clean" required />
+          <input type="text" id="regUsername" class="form-control" placeholder="contoh: laundry-jaya" required />
           <div class="help-text">3-30 karakter huruf kecil, angka, dan '-'</div>
         </div>
         <button type="submit" class="btn btn-primary" style="width:100%;">Daftar Sekarang</button>
@@ -215,35 +212,27 @@ function renderRegister() {
         ownerId: uid,
         username,
         siteName: name,
-        description: 'Penyedia produk dan layanan terpercaya dengan kualitas terbaik.',
+        description: 'Pusat layanan dan produk terpercaya.',
         plan: 'free',
         status: 'draft',
         published: false,
         approved: false,
         hero: {
-          title: `Solusi Terbaik Bersama ${name}`,
-          subtitle: 'Kualitas profesional dengan pelayanan cepat dan terpercaya.',
+          title: `Selamat Datang di ${name}`,
+          subtitle: 'Kualitas terbaik untuk kepuasan Anda',
           imageUrl: ''
         },
         about: {
           title: 'Tentang Kami',
-          content: 'Kami berkomitmen untuk memberikan standar mutu tertinggi dalam setiap layanan dan produk kami.'
+          content: 'Kami berkomitmen menghadirkan layanan bermutu tinggi.'
         },
         services: [
-          { title: 'Layanan Cepat', desc: 'Proses pengerjaan kilat dan tepat waktu.' },
-          { title: 'Harga Terjangkau', desc: 'Tarif bersahabat dengan kualitas maksimal.' }
+          { title: 'Layanan Cepat', desc: 'Pengerjaan tepat waktu dan rapi.' }
         ],
         products: [],
-        faqs: [
-          { q: 'Bagaimana cara melakukan pemesanan?', a: 'Pilih produk yang diinginkan lalu klik tombol Pesan via WhatsApp.' }
-        ],
-        testimonials: [
-          { name: 'Pelanggan Setia', text: 'Pelayanan sangat ramah dan memuaskan!' }
-        ],
-        contact: {
-          whatsapp: '6281234567890',
-          address: 'Jl. Raya Utama No. 123'
-        },
+        faqs: [],
+        testimonials: [],
+        contact: { whatsapp: '', address: '' },
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp()
       });
@@ -286,7 +275,7 @@ function renderLogin() {
   });
 }
 
-// 3. User Dashboard
+// 3. User Dashboard (Lengkap dengan Rangkuman Section)
 async function renderDashboard() {
   if (!currentUser) return renderLogin();
   const app = document.getElementById('app');
@@ -317,13 +306,56 @@ async function renderDashboard() {
       </div>
 
       <div style="margin-top: 1.5rem; display: flex; gap: 0.5rem; flex-wrap: wrap;">
-        <a href="#/builder" class="btn btn-primary">Edit Landing Page</a>
+        <a href="#/builder" class="btn btn-primary">Buka Builder & Edit Konten</a>
         <button id="btnSubmitReview" class="btn btn-secondary" ${['pending_review', 'approved', 'published'].includes(site.status) ? 'disabled' : ''}>
           ${site.status === 'pending_review' ? 'Menunggu Review Admin' : 'Ajukan Review'}
         </button>
         <a href="${publicRelativeUrl}" class="btn btn-success" ${site.status !== 'published' ? 'style="opacity:0.5; pointer-events:none;"' : ''}>
           Lihat Landing Page
         </a>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Komponen & Layanan Landing Page</h3>
+      <p class="help-text" style="margin-bottom:1rem;">Kelola seluruh bagian landing page melalui tombol di bawah ini:</p>
+      
+      <div class="lp-grid">
+        <div class="lp-card" style="text-align:left;">
+          <h4>🖼️ Hero Banner</h4>
+          <p class="help-text">Status: ${site.hero?.imageUrl ? '✅ Gambar Terpasang' : '⚪ Belum ada gambar'}</p>
+          <a href="#/builder" class="btn btn-sm btn-secondary" style="margin-top:0.5rem;">Edit Banner</a>
+        </div>
+
+        <div class="lp-card" style="text-align:left;">
+          <h4>💼 Layanan (${site.services?.length || 0})</h4>
+          <p class="help-text">${site.services?.length ? '✅ ' + site.services.length + ' Layanan aktif' : '⚪ Belum ada layanan'}</p>
+          <a href="#/builder" class="btn btn-sm btn-secondary" style="margin-top:0.5rem;">Kelola Layanan</a>
+        </div>
+
+        <div class="lp-card" style="text-align:left;">
+          <h4>🛍️ Produk (${site.products?.length || 0}/5)</h4>
+          <p class="help-text">${site.products?.length ? '✅ ' + site.products.length + ' Produk terdaftar' : '⚪ Belum ada produk'}</p>
+          <a href="#/builder" class="btn btn-sm btn-secondary" style="margin-top:0.5rem;">Kelola Produk</a>
+        </div>
+
+        <div class="lp-card" style="text-align:left;">
+          <h4>❓ FAQ (${site.faqs?.length || 0})</h4>
+          <p class="help-text">${site.faqs?.length ? '✅ ' + site.faqs.length + ' Tanya Jawab' : '⚪ Belum ada FAQ'}</p>
+          <a href="#/builder" class="btn btn-sm btn-secondary" style="margin-top:0.5rem;">Kelola FAQ</a>
+        </div>
+
+        <div class="lp-card" style="text-align:left;">
+          <h4>⭐ Testimoni (${site.testimonials?.length || 0})</h4>
+          <p class="help-text">${site.testimonials?.length ? '✅ ' + site.testimonials.length + ' Ulasan' : '⚪ Belum ada ulasan'}</p>
+          <a href="#/builder" class="btn btn-sm btn-secondary" style="margin-top:0.5rem;">Kelola Testimoni</a>
+        </div>
+
+        <div class="lp-card" style="text-align:left;">
+          <h4>📞 Kontak & WhatsApp</h4>
+          <p class="help-text">${site.contact?.whatsapp ? '✅ WhatsApp: +' + site.contact.whatsapp : '⚪ Belum diatur'}</p>
+          <a href="#/builder" class="btn btn-sm btn-secondary" style="margin-top:0.5rem;">Edit Kontak</a>
+        </div>
       </div>
     </div>
   `;
@@ -341,7 +373,7 @@ async function renderDashboard() {
   });
 }
 
-// 4. Section Builder (Hero, About, Services, Products, FAQ, Testimoni, Contact)
+// 4. Section Builder
 async function renderBuilder() {
   const app = document.getElementById('app');
   app.innerHTML = `<div class="card"><p>Memuat data builder...</p></div>`;
@@ -358,27 +390,25 @@ async function renderBuilder() {
     <div class="card">
       <div style="display:flex; justify-content:space-between; align-items:center;">
         <h2>Landing Page Builder</h2>
-        <a href="#/dashboard" class="btn btn-sm btn-secondary">Kembali</a>
+        <a href="#/dashboard" class="btn btn-sm btn-secondary">Kembali ke Dashboard</a>
       </div>
       
       <form id="formBuilder" style="margin-top:1.5rem;">
-        <!-- SEO & Identitas -->
         <h3>1. Identitas Bisnis & SEO</h3>
         <div class="form-group">
-          <label>Nama Bisnis (Page Title & SEO)</label>
+          <label>Nama Bisnis (Menjadi Title Website)</label>
           <input type="text" id="siteName" class="form-control" value="${site.siteName || ''}" required />
         </div>
         <div class="form-group">
-          <label>Deskripsi Bisnis (Meta Description & OpenGraph)</label>
+          <label>Deskripsi Bisnis (Meta SEO & OpenGraph)</label>
           <textarea id="siteDesc" class="form-control" rows="2" required>${site.description || ''}</textarea>
         </div>
 
         <hr style="margin: 2rem 0; border: none; border-top: 1px solid var(--border);" />
 
-        <!-- Hero Section -->
         <h3>2. Hero Section (Header Banner)</h3>
         <div class="form-group">
-          <label>Judul Utama Hero</label>
+          <label>Judul Hero Banner</label>
           <input type="text" id="heroTitle" class="form-control" value="${site.hero?.title || ''}" required />
         </div>
         <div class="form-group">
@@ -388,25 +418,23 @@ async function renderBuilder() {
         <div class="form-group">
           <label>Upload Gambar Banner Hero (Opsional)</label>
           <input type="file" id="heroImageFile" class="form-control" accept="image/*" />
-          ${site.hero?.imageUrl ? `<p class="help-text">Gambar saat ini: <a href="${site.hero.imageUrl}" target="_blank">Lihat Banner</a></p>` : ''}
+          ${site.hero?.imageUrl ? `<p class="help-text">Banner saat ini: <a href="${site.hero.imageUrl}" target="_blank">Lihat Gambar</a></p>` : ''}
         </div>
 
         <hr style="margin: 2rem 0; border: none; border-top: 1px solid var(--border);" />
 
-        <!-- Tentang Kami -->
         <h3>3. Tentang Kami</h3>
         <div class="form-group">
           <label>Judul Section</label>
           <input type="text" id="aboutTitle" class="form-control" value="${site.about?.title || 'Tentang Kami'}" />
         </div>
         <div class="form-group">
-          <label>Konten Cerita / Profil Bisnis</label>
+          <label>Konten Profil Bisnis</label>
           <textarea id="aboutContent" class="form-control" rows="3">${site.about?.content || ''}</textarea>
         </div>
 
         <hr style="margin: 2rem 0; border: none; border-top: 1px solid var(--border);" />
 
-        <!-- Layanan -->
         <div style="display:flex; justify-content:space-between; align-items:center;">
           <h3>4. Layanan & Keunggulan</h3>
           <button type="button" id="btnAddService" class="btn btn-sm btn-secondary">+ Tambah Layanan</button>
@@ -415,16 +443,14 @@ async function renderBuilder() {
 
         <hr style="margin: 2rem 0; border: none; border-top: 1px solid var(--border);" />
 
-        <!-- Produk -->
         <div style="display:flex; justify-content:space-between; align-items:center;">
-          <h3>5. Produk & Harga (Maks 5 Produk)</h3>
+          <h3>5. Produk & Paket (Maks 5 Produk)</h3>
           <button type="button" id="btnAddProduct" class="btn btn-sm btn-secondary">+ Tambah Produk</button>
         </div>
         <div id="productContainer" style="margin-top:1rem;"></div>
 
         <hr style="margin: 2rem 0; border: none; border-top: 1px solid var(--border);" />
 
-        <!-- FAQ -->
         <div style="display:flex; justify-content:space-between; align-items:center;">
           <h3>6. FAQ (Tanya Jawab)</h3>
           <button type="button" id="btnAddFaq" class="btn btn-sm btn-secondary">+ Tambah FAQ</button>
@@ -433,7 +459,6 @@ async function renderBuilder() {
 
         <hr style="margin: 2rem 0; border: none; border-top: 1px solid var(--border);" />
 
-        <!-- Testimoni -->
         <div style="display:flex; justify-content:space-between; align-items:center;">
           <h3>7. Testimoni Pelanggan</h3>
           <button type="button" id="btnAddTesti" class="btn btn-sm btn-secondary">+ Tambah Testimoni</button>
@@ -442,14 +467,13 @@ async function renderBuilder() {
 
         <hr style="margin: 2rem 0; border: none; border-top: 1px solid var(--border);" />
 
-        <!-- Kontak & CTA -->
-        <h3>8. Kontak & Pemesanan</h3>
+        <h3>8. Kontak & Lokasi</h3>
         <div class="form-group">
-          <label>Nomor WhatsApp (Format: 628xxxxxxxxxx)</label>
+          <label>Nomor WhatsApp Bisnis (Format: 628xxxxxxxxxx)</label>
           <input type="text" id="siteWa" class="form-control" value="${site.contact?.whatsapp || ''}" required />
         </div>
         <div class="form-group">
-          <label>Alamat / Lokasi Operasional</label>
+          <label>Alamat / Lokasi Usaha</label>
           <input type="text" id="siteAddress" class="form-control" value="${site.contact?.address || ''}" />
         </div>
 
@@ -516,7 +540,7 @@ async function renderBuilder() {
     box.innerHTML = faqs.map((f, i) => `
       <div class="section-item">
         <div class="section-header">
-          <strong>Pertanyaan #${i + 1}</strong>
+          <strong>FAQ #${i + 1}</strong>
           <button type="button" class="btn btn-sm btn-danger btnDelFaq" data-idx="${i}">Hapus</button>
         </div>
         <input type="text" class="form-control f-q" placeholder="Pertanyaan (Q)" value="${f.q || ''}" style="margin-bottom:0.5rem;" required />
@@ -539,7 +563,7 @@ async function renderBuilder() {
           <button type="button" class="btn btn-sm btn-danger btnDelTesti" data-idx="${i}">Hapus</button>
         </div>
         <input type="text" class="form-control t-name" placeholder="Nama Pelanggan" value="${t.name || ''}" style="margin-bottom:0.5rem;" required />
-        <textarea class="form-control t-text" placeholder="Ulasan / Feedback" rows="2">${t.text || ''}</textarea>
+        <textarea class="form-control t-text" placeholder="Ulasan / Testimoni" rows="2">${t.text || ''}</textarea>
       </div>
     `).join('');
     document.querySelectorAll('.btnDelTesti').forEach(b => b.onclick = (e) => {
@@ -579,14 +603,12 @@ async function renderBuilder() {
     btnSave.innerText = "Menyimpan & Mengunggah Gambar...";
 
     try {
-      // 1. Upload Hero Image jika ada
       let heroImgUrl = site.hero?.imageUrl || '';
       const heroFileInput = document.getElementById('heroImageFile');
       if (heroFileInput.files[0]) {
         heroImgUrl = await uploadImageFile(heroFileInput.files[0], `websites/${currentUser.uid}/hero_${Date.now()}`);
       }
 
-      // 2. Ambil & Upload Gambar Produk
       const pNames = document.querySelectorAll('.p-name');
       const pPrices = document.querySelectorAll('.p-price');
       const pDescs = document.querySelectorAll('.p-desc');
@@ -606,7 +628,6 @@ async function renderBuilder() {
         });
       }
 
-      // 3. Ambil data layanan
       const sTitles = document.querySelectorAll('.s-title');
       const sDescs = document.querySelectorAll('.s-desc');
       const updatedServices = [];
@@ -614,7 +635,6 @@ async function renderBuilder() {
         updatedServices.push({ title: sTitles[i].value, desc: sDescs[i].value });
       }
 
-      // 4. Ambil FAQ
       const fQs = document.querySelectorAll('.f-q');
       const fAs = document.querySelectorAll('.f-a');
       const updatedFaqs = [];
@@ -622,7 +642,6 @@ async function renderBuilder() {
         updatedFaqs.push({ q: fQs[i].value, a: fAs[i].value });
       }
 
-      // 5. Ambil Testimoni
       const tNames = document.querySelectorAll('.t-name');
       const tTexts = document.querySelectorAll('.t-text');
       const updatedTestis = [];
@@ -630,7 +649,6 @@ async function renderBuilder() {
         updatedTestis.push({ name: tNames[i].value, text: tTexts[i].value });
       }
 
-      // Simpan ke Firestore
       await updateDoc(doc(db, 'websites', currentUser.uid), {
         siteName: document.getElementById('siteName').value,
         description: document.getElementById('siteDesc').value,
@@ -654,7 +672,7 @@ async function renderBuilder() {
         updatedAt: serverTimestamp()
       });
 
-      alert('Landing page berhasil disimpan!');
+      alert('Perubahan berhasil disimpan!');
       navigate('#/dashboard');
     } catch (err) {
       alert('Gagal menyimpan: ' + err.message);
@@ -783,10 +801,10 @@ async function renderAdminReviews() {
   });
 }
 
-// 6. Public Landing Page View (SEO, OpenGraph, Tanpa Header/Footer Aplikasi)
+// 6. Public Landing Page View (Title & SEO 100% Mengikuti Nama Bisnis)
 async function renderPublicLandingPage(username) {
   const root = document.getElementById('app');
-  document.getElementById('navbar-container').innerHTML = ''; // Hilangkan navbar aplikasi
+  document.getElementById('navbar-container').innerHTML = '';
   root.innerHTML = `<div style="text-align:center; padding:5rem 0;">Memuat landing page @${username}...</div>`;
 
   try {
@@ -794,12 +812,25 @@ async function renderPublicLandingPage(username) {
     const snap = await getDocs(q);
 
     if (snap.empty) {
+      document.title = "404 - Halaman Tidak Ditemukan";
       root.innerHTML = `<div class="card" style="text-align:center; margin:3rem auto; max-width:500px;"><h2>404 - Tidak Ditemukan</h2><p>Landing page @${username} tidak terdaftar.</p></div>`;
       return;
     }
 
     const siteDoc = snap.docs[0];
     const site = siteDoc.data();
+
+    // TITLE WEBSITE LANGSUNG DISESUAIKAN DENGAN NAMA BISNIS
+    document.title = site.siteName || "Demo Website";
+    
+    // SEO & OpenGraph Update
+    const metaDesc = site.description || `Website resmi ${site.siteName}`;
+    const shareImage = site.hero?.imageUrl || (site.products?.[0]?.imageUrl || '');
+
+    document.getElementById('meta-desc')?.setAttribute('content', metaDesc);
+    document.getElementById('og-title')?.setAttribute('content', site.siteName);
+    document.getElementById('og-desc')?.setAttribute('content', metaDesc);
+    document.getElementById('og-image')?.setAttribute('content', shareImage);
 
     if (site.status === 'suspended') {
       root.innerHTML = `<div class="card" style="text-align:center; margin:3rem auto; max-width:500px; color:#991b1b;"><h2>Website Ditangguhkan</h2><p>Landing page ini tidak dapat diakses karena pelanggaran aturan platform.</p></div>`;
@@ -814,21 +845,9 @@ async function renderPublicLandingPage(username) {
       return;
     }
 
-    // Dynamic SEO & OpenGraph Injection
-    const fullTitle = `${site.siteName} | Official Website`;
-    const fullDesc = site.description || `Kunjungi website resmi ${site.siteName}`;
-    const shareImage = site.hero?.imageUrl || (site.products?.[0]?.imageUrl || '');
-
-    document.title = fullTitle;
-    document.getElementById('meta-desc')?.setAttribute('content', fullDesc);
-    document.getElementById('og-title')?.setAttribute('content', fullTitle);
-    document.getElementById('og-desc')?.setAttribute('content', fullDesc);
-    document.getElementById('og-image')?.setAttribute('content', shareImage);
-
-    // Render Landing Page Canvas Murni
+    // Render Canvas Landing Page
     root.innerHTML = `
       <div class="landing-page">
-        <!-- Hero Section -->
         <header class="lp-hero">
           <div class="lp-hero-with-img">
             ${site.hero?.imageUrl ? `<img src="${site.hero.imageUrl}" class="lp-hero-img" alt="${site.siteName}" />` : ''}
@@ -845,7 +864,6 @@ async function renderPublicLandingPage(username) {
           </div>
         </header>
 
-        <!-- Tentang Kami -->
         ${site.about?.content ? `
           <section class="lp-section">
             <h2 class="lp-section-title">${site.about.title || 'Tentang Kami'}</h2>
@@ -855,7 +873,6 @@ async function renderPublicLandingPage(username) {
           </section>
         ` : ''}
 
-        <!-- Layanan -->
         ${site.services?.length ? `
           <section class="lp-section">
             <h2 class="lp-section-title">Layanan & Keunggulan</h2>
@@ -871,11 +888,10 @@ async function renderPublicLandingPage(username) {
           </section>
         ` : ''}
 
-        <!-- Produk / Paket -->
         ${site.products?.length ? `
           <section class="lp-section">
             <h2 class="lp-section-title">Pilihan Produk & Paket</h2>
-            <p class="lp-section-sub">Dapatkan penawaran terbaik hari ini</p>
+            <p class="lp-section-sub">Dapatkan penawaran terbaik</p>
             <div class="lp-grid">
               ${site.products.map(p => `
                 <div class="lp-card">
@@ -895,11 +911,10 @@ async function renderPublicLandingPage(username) {
           </section>
         ` : ''}
 
-        <!-- FAQ -->
         ${site.faqs?.length ? `
           <section class="lp-section">
-            <h2 class="lp-section-title">Pertanyaan yang Sering Diajukan</h2>
-            <p class="lp-section-sub">Temukan jawaban cepat atas pertanyaan Anda</p>
+            <h2 class="lp-section-title">Pertanyaan yang Sering Diajukan (FAQ)</h2>
+            <p class="lp-section-sub">Informasi seputar pemesanan dan layanan</p>
             <div style="max-width:700px; margin:0 auto;">
               ${site.faqs.map(f => `
                 <div class="lp-faq-item">
@@ -911,11 +926,10 @@ async function renderPublicLandingPage(username) {
           </section>
         ` : ''}
 
-        <!-- Testimoni -->
         ${site.testimonials?.length ? `
           <section class="lp-section">
             <h2 class="lp-section-title">Ulasan Pelanggan</h2>
-            <p class="lp-section-sub">Apa kata mereka tentang pengalaman bersama kami</p>
+            <p class="lp-section-sub">Testimoni nyata dari pelanggan kami</p>
             <div class="lp-grid">
               ${site.testimonials.map(t => `
                 <div class="lp-testi-card">
@@ -927,7 +941,6 @@ async function renderPublicLandingPage(username) {
           </section>
         ` : ''}
 
-        <!-- Kontak & Alamat -->
         <section class="lp-section" style="text-align:center; background:#fafafa;">
           <h2 class="lp-section-title">Hubungi Kami</h2>
           <p style="margin-top:0.5rem; color:#475569;">${site.contact?.address || 'Alamat operasional belum dicantumkan.'}</p>
@@ -940,7 +953,6 @@ async function renderPublicLandingPage(username) {
           ` : ''}
         </section>
 
-        <!-- Minimal Report Bar -->
         <div class="lp-report-bar">
           <span>&copy; ${new Date().getFullYear()} ${site.siteName}</span> &bull; 
           <a href="javascript:void(0)" id="btnReport" style="color:var(--text-muted); text-decoration:underline;">Laporkan Halaman</a>
