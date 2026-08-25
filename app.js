@@ -33,14 +33,54 @@ const RESERVED_USERNAMES = [
 let currentUser = null;
 let currentUserProfile = null;
 
-// Helper Upload Image ke Firebase Storage
+// --- AUTO-COMPRESS GAMBAR (Client-Side Resizer) ---
+// Mengompresi gambar otomatis sebelum diunggah agar proses hanya 1-2 detik
+async function compressImage(file, maxWidth = 1200, quality = 0.8) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = (event) => {
+      const img = new Image();
+      img.src = event.target.result;
+      img.onload = () => {
+        let width = img.width;
+        let height = img.height;
+
+        if (width > maxWidth) {
+          height = Math.round((height * maxWidth) / width);
+          width = maxWidth;
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+
+        canvas.toBlob((blob) => {
+          if (blob) resolve(blob);
+          else reject(new Error('Gagal mengompres gambar'));
+        }, 'image/jpeg', quality);
+      };
+      img.onerror = (err) => reject(err);
+    };
+    reader.onerror = (err) => reject(err);
+  });
+}
+
+// Helper Upload Image ke Firebase Storage dengan Timeout & Kompresi
 async function uploadImageFile(file, path) {
   if (!file) return null;
-  if (file.size > 5 * 1024 * 1024) {
-    throw new Error('Ukuran file maksimal 5MB.');
-  }
+  const compressedBlob = await compressImage(file);
   const storageRef = ref(storage, path);
-  await uploadBytes(storageRef, file);
+  
+  // Timeout 15 detik untuk mencegah loading terus menerus
+  const uploadPromise = uploadBytes(storageRef, compressedBlob, { contentType: 'image/jpeg' });
+  const timeoutPromise = new Promise((_, reject) => 
+    setTimeout(() => reject(new Error("Unggah gambar timeout. Silakan gunakan opsi URL Gambar.")), 15000)
+  );
+
+  await Promise.race([uploadPromise, timeoutPromise]);
   return await getDownloadURL(storageRef);
 }
 
@@ -58,14 +98,12 @@ const router = async () => {
     siteMatch = search.match(/site\/([a-zA-Z0-9_-]+)/);
   }
 
-  // JIKA SEDANG MEMBUKA LANDING PAGE PUBLIK
   if (siteMatch) {
     const targetUsername = siteMatch[1].toLowerCase();
     renderPublicLandingPage(targetUsername);
     return;
   }
 
-  // JIKA DI DASHBOARD / ADMIN PANEL
   document.title = "Bandar Builder - Landing Page Engine";
   renderNavbar();
 
@@ -86,7 +124,7 @@ window.addEventListener('load', () => {
         const snap = await getDoc(doc(db, 'users', user.uid));
         currentUserProfile = snap.exists() ? snap.data() : null;
       } catch (err) {
-        console.error("Profile load err:", err);
+        console.error("Profile err:", err);
       }
     } else {
       currentUserProfile = null;
@@ -147,7 +185,7 @@ function renderNavbar() {
   });
 }
 
-// 1. Registrasi
+// 1. Register
 function renderRegister() {
   const app = document.getElementById('app');
   app.innerHTML = `
@@ -168,7 +206,7 @@ function renderRegister() {
         </div>
         <div class="form-group">
           <label>Pilih Username (/site/username)</label>
-          <input type="text" id="regUsername" class="form-control" placeholder="contoh: laundry-jaya" required />
+          <input type="text" id="regUsername" class="form-control" placeholder="contoh: bandar-clean" required />
           <div class="help-text">3-30 karakter huruf kecil, angka, dan '-'</div>
         </div>
         <button type="submit" class="btn btn-primary" style="width:100%;">Daftar Sekarang</button>
@@ -188,7 +226,7 @@ function renderRegister() {
       return;
     }
     if (RESERVED_USERNAMES.includes(username)) {
-      alert('Username dicadangkan oleh sistem.');
+      alert('Username dicadangkan sistem.');
       return;
     }
 
@@ -212,22 +250,22 @@ function renderRegister() {
         ownerId: uid,
         username,
         siteName: name,
-        description: 'Pusat layanan dan produk terpercaya.',
+        description: 'Pusat produk dan layanan terpercaya dengan mutu terbaik.',
         plan: 'free',
         status: 'draft',
         published: false,
         approved: false,
         hero: {
-          title: `Selamat Datang di ${name}`,
-          subtitle: 'Kualitas terbaik untuk kepuasan Anda',
+          title: `Solusi Terbaik Bersama ${name}`,
+          subtitle: 'Kualitas terjamin untuk kepuasan Anda.',
           imageUrl: ''
         },
         about: {
           title: 'Tentang Kami',
-          content: 'Kami berkomitmen menghadirkan layanan bermutu tinggi.'
+          content: 'Kami berkomitmen memberikan pengalaman dan layanan terbaik.'
         },
         services: [
-          { title: 'Layanan Cepat', desc: 'Pengerjaan tepat waktu dan rapi.' }
+          { title: 'Layanan Cepat', desc: 'Pengerjaan kilat dan hasil rapi.' }
         ],
         products: [],
         faqs: [],
@@ -275,7 +313,7 @@ function renderLogin() {
   });
 }
 
-// 3. User Dashboard (Lengkap dengan Rangkuman Section)
+// 3. User Dashboard
 async function renderDashboard() {
   if (!currentUser) return renderLogin();
   const app = document.getElementById('app');
@@ -306,7 +344,7 @@ async function renderDashboard() {
       </div>
 
       <div style="margin-top: 1.5rem; display: flex; gap: 0.5rem; flex-wrap: wrap;">
-        <a href="#/builder" class="btn btn-primary">Buka Builder & Edit Konten</a>
+        <a href="#/builder" class="btn btn-primary">Edit Landing Page</a>
         <button id="btnSubmitReview" class="btn btn-secondary" ${['pending_review', 'approved', 'published'].includes(site.status) ? 'disabled' : ''}>
           ${site.status === 'pending_review' ? 'Menunggu Review Admin' : 'Ajukan Review'}
         </button>
@@ -316,15 +354,14 @@ async function renderDashboard() {
       </div>
     </div>
 
+    <!-- Section Card Shortcuts -->
     <div class="card">
       <h3>Komponen & Layanan Landing Page</h3>
-      <p class="help-text" style="margin-bottom:1rem;">Kelola seluruh bagian landing page melalui tombol di bawah ini:</p>
-      
-      <div class="lp-grid">
+      <div class="lp-grid" style="margin-top:1rem;">
         <div class="lp-card" style="text-align:left;">
           <h4>🖼️ Hero Banner</h4>
-          <p class="help-text">Status: ${site.hero?.imageUrl ? '✅ Gambar Terpasang' : '⚪ Belum ada gambar'}</p>
-          <a href="#/builder" class="btn btn-sm btn-secondary" style="margin-top:0.5rem;">Edit Banner</a>
+          <p class="help-text">Status: ${site.hero?.imageUrl ? '✅ Gambar Terpasang' : '⚪ Polos Tanpa Gambar (Opsional)'}</p>
+          <a href="#/builder" class="btn btn-sm btn-secondary" style="margin-top:0.5rem;">Edit Hero</a>
         </div>
 
         <div class="lp-card" style="text-align:left;">
@@ -335,7 +372,7 @@ async function renderDashboard() {
 
         <div class="lp-card" style="text-align:left;">
           <h4>🛍️ Produk (${site.products?.length || 0}/5)</h4>
-          <p class="help-text">${site.products?.length ? '✅ ' + site.products.length + ' Produk terdaftar' : '⚪ Belum ada produk'}</p>
+          <p class="help-text">${site.products?.length ? '✅ ' + site.products.length + ' Produk' : '⚪ Belum ada produk'}</p>
           <a href="#/builder" class="btn btn-sm btn-secondary" style="margin-top:0.5rem;">Kelola Produk</a>
         </div>
 
@@ -347,13 +384,13 @@ async function renderDashboard() {
 
         <div class="lp-card" style="text-align:left;">
           <h4>⭐ Testimoni (${site.testimonials?.length || 0})</h4>
-          <p class="help-text">${site.testimonials?.length ? '✅ ' + site.testimonials.length + ' Ulasan' : '⚪ Belum ada ulasan'}</p>
+          <p class="help-text">${site.testimonials?.length ? '✅ ' + site.testimonials.length + ' Testimoni' : '⚪ Belum ada ulasan'}</p>
           <a href="#/builder" class="btn btn-sm btn-secondary" style="margin-top:0.5rem;">Kelola Testimoni</a>
         </div>
 
         <div class="lp-card" style="text-align:left;">
           <h4>📞 Kontak & WhatsApp</h4>
-          <p class="help-text">${site.contact?.whatsapp ? '✅ WhatsApp: +' + site.contact.whatsapp : '⚪ Belum diatur'}</p>
+          <p class="help-text">${site.contact?.whatsapp ? '✅ +' + site.contact.whatsapp : '⚪ Belum diatur'}</p>
           <a href="#/builder" class="btn btn-sm btn-secondary" style="margin-top:0.5rem;">Edit Kontak</a>
         </div>
       </div>
@@ -373,7 +410,7 @@ async function renderDashboard() {
   });
 }
 
-// 4. Section Builder
+// 4. Section Builder (Dual Mode: URL & Upload File)
 async function renderBuilder() {
   const app = document.getElementById('app');
   app.innerHTML = `<div class="card"><p>Memuat data builder...</p></div>`;
@@ -394,19 +431,21 @@ async function renderBuilder() {
       </div>
       
       <form id="formBuilder" style="margin-top:1.5rem;">
+        <!-- SEO & Identitas -->
         <h3>1. Identitas Bisnis & SEO</h3>
         <div class="form-group">
           <label>Nama Bisnis (Menjadi Title Website)</label>
           <input type="text" id="siteName" class="form-control" value="${site.siteName || ''}" required />
         </div>
         <div class="form-group">
-          <label>Deskripsi Bisnis (Meta SEO & OpenGraph)</label>
+          <label>Deskripsi Bisnis (SEO & OpenGraph)</label>
           <textarea id="siteDesc" class="form-control" rows="2" required>${site.description || ''}</textarea>
         </div>
 
         <hr style="margin: 2rem 0; border: none; border-top: 1px solid var(--border);" />
 
-        <h3>2. Hero Section (Header Banner)</h3>
+        <!-- Hero Section -->
+        <h3>2. Hero Section</h3>
         <div class="form-group">
           <label>Judul Hero Banner</label>
           <input type="text" id="heroTitle" class="form-control" value="${site.hero?.title || ''}" required />
@@ -415,14 +454,19 @@ async function renderBuilder() {
           <label>Subjudul Hero</label>
           <input type="text" id="heroSubtitle" class="form-control" value="${site.hero?.subtitle || ''}" />
         </div>
-        <div class="form-group">
-          <label>Upload Gambar Banner Hero (Opsional)</label>
+        
+        <div class="form-group" style="background:#f8fafc; padding:1rem; border-radius:6px; border:1px solid var(--border);">
+          <label><strong>Gambar Hero Banner (Opsional / Tidak Wajib)</strong></label>
+          <p class="help-text" style="margin-bottom:0.5rem;">Pilihan 1: Masukkan link URL langsung (Instan & Cepat)</p>
+          <input type="url" id="heroImageUrl" class="form-control" placeholder="https://contoh.com/gambar-hero.jpg" value="${site.hero?.imageUrl || ''}" />
+          
+          <p class="help-text" style="margin-top:0.75rem; margin-bottom:0.25rem;">Pilihan 2: Atau unggah file dari perangkat</p>
           <input type="file" id="heroImageFile" class="form-control" accept="image/*" />
-          ${site.hero?.imageUrl ? `<p class="help-text">Banner saat ini: <a href="${site.hero.imageUrl}" target="_blank">Lihat Gambar</a></p>` : ''}
         </div>
 
         <hr style="margin: 2rem 0; border: none; border-top: 1px solid var(--border);" />
 
+        <!-- Tentang Kami -->
         <h3>3. Tentang Kami</h3>
         <div class="form-group">
           <label>Judul Section</label>
@@ -435,6 +479,7 @@ async function renderBuilder() {
 
         <hr style="margin: 2rem 0; border: none; border-top: 1px solid var(--border);" />
 
+        <!-- Layanan -->
         <div style="display:flex; justify-content:space-between; align-items:center;">
           <h3>4. Layanan & Keunggulan</h3>
           <button type="button" id="btnAddService" class="btn btn-sm btn-secondary">+ Tambah Layanan</button>
@@ -443,6 +488,7 @@ async function renderBuilder() {
 
         <hr style="margin: 2rem 0; border: none; border-top: 1px solid var(--border);" />
 
+        <!-- Produk -->
         <div style="display:flex; justify-content:space-between; align-items:center;">
           <h3>5. Produk & Paket (Maks 5 Produk)</h3>
           <button type="button" id="btnAddProduct" class="btn btn-sm btn-secondary">+ Tambah Produk</button>
@@ -451,6 +497,7 @@ async function renderBuilder() {
 
         <hr style="margin: 2rem 0; border: none; border-top: 1px solid var(--border);" />
 
+        <!-- FAQ -->
         <div style="display:flex; justify-content:space-between; align-items:center;">
           <h3>6. FAQ (Tanya Jawab)</h3>
           <button type="button" id="btnAddFaq" class="btn btn-sm btn-secondary">+ Tambah FAQ</button>
@@ -459,6 +506,7 @@ async function renderBuilder() {
 
         <hr style="margin: 2rem 0; border: none; border-top: 1px solid var(--border);" />
 
+        <!-- Testimoni -->
         <div style="display:flex; justify-content:space-between; align-items:center;">
           <h3>7. Testimoni Pelanggan</h3>
           <button type="button" id="btnAddTesti" class="btn btn-sm btn-secondary">+ Tambah Testimoni</button>
@@ -467,9 +515,10 @@ async function renderBuilder() {
 
         <hr style="margin: 2rem 0; border: none; border-top: 1px solid var(--border);" />
 
+        <!-- Kontak -->
         <h3>8. Kontak & Lokasi</h3>
         <div class="form-group">
-          <label>Nomor WhatsApp Bisnis (Format: 628xxxxxxxxxx)</label>
+          <label>Nomor WhatsApp (Format: 628xxxxxxxxxx)</label>
           <input type="text" id="siteWa" class="form-control" value="${site.contact?.whatsapp || ''}" required />
         </div>
         <div class="form-group">
@@ -477,7 +526,7 @@ async function renderBuilder() {
           <input type="text" id="siteAddress" class="form-control" value="${site.contact?.address || ''}" />
         </div>
 
-        <button type="submit" id="btnSaveBuilder" class="btn btn-primary" style="margin-top:1.5rem; width:100%;">
+        <button type="submit" id="btnSaveBuilder" class="btn btn-primary" style="margin-top:1.5rem; width:100%; font-size:1.1rem; padding:0.85rem;">
           Simpan Seluruh Perubahan
         </button>
       </form>
@@ -503,7 +552,7 @@ async function renderBuilder() {
     });
   };
 
-  // Render Produk
+  // Render Produk (Dual-Input: URL & Upload)
   const renderProducts = () => {
     const box = document.getElementById('productContainer');
     box.innerHTML = products.map((p, i) => `
@@ -521,10 +570,12 @@ async function renderBuilder() {
         <div class="form-group">
           <input type="text" class="form-control p-desc" placeholder="Keterangan singkat" value="${p.description || ''}" />
         </div>
-        <div class="form-group">
-          <label style="font-size:0.8rem;">Upload Foto Produk (Opsional)</label>
+        <div class="form-group" style="background:#f1f5f9; padding:0.75rem; border-radius:6px;">
+          <label style="font-size:0.8rem; font-weight:bold;">Foto Produk (Pilihan Utama: URL Gambar)</label>
+          <input type="url" class="form-control p-url" placeholder="https://contoh.com/foto-produk.jpg" value="${p.imageUrl || ''}" style="margin-bottom:0.5rem;" />
+          
+          <label style="font-size:0.8rem; font-weight:bold;">Atau Upload File:</label>
           <input type="file" class="form-control p-file" accept="image/*" />
-          ${p.imageUrl ? `<p class="help-text">Foto saat ini: <a href="${p.imageUrl}" target="_blank">Lihat Foto</a></p>` : ''}
         </div>
       </div>
     `).join('');
@@ -595,30 +646,35 @@ async function renderBuilder() {
     renderTestis();
   };
 
-  // Submit & Upload Data
+  // Submit Handler (Cepat & Non-Blocking)
   document.getElementById('formBuilder').addEventListener('submit', async (e) => {
     e.preventDefault();
     const btnSave = document.getElementById('btnSaveBuilder');
     btnSave.disabled = true;
-    btnSave.innerText = "Menyimpan & Mengunggah Gambar...";
+    btnSave.innerText = "⏳ Sedang Menyimpan Data...";
 
     try {
-      let heroImgUrl = site.hero?.imageUrl || '';
+      // 1. Prioritaskan URL Gambar, lalu file upload
+      let heroImgUrl = document.getElementById('heroImageUrl').value.trim();
       const heroFileInput = document.getElementById('heroImageFile');
       if (heroFileInput.files[0]) {
+        btnSave.innerText = "⏳ Mengunggah Hero Banner...";
         heroImgUrl = await uploadImageFile(heroFileInput.files[0], `websites/${currentUser.uid}/hero_${Date.now()}`);
       }
 
+      // 2. Ambil data produk
       const pNames = document.querySelectorAll('.p-name');
       const pPrices = document.querySelectorAll('.p-price');
       const pDescs = document.querySelectorAll('.p-desc');
+      const pUrls = document.querySelectorAll('.p-url');
       const pFiles = document.querySelectorAll('.p-file');
 
       const updatedProducts = [];
       for (let i = 0; i < pNames.length; i++) {
-        let pImgUrl = products[i]?.imageUrl || '';
+        let pImgUrl = pUrls[i].value.trim();
         if (pFiles[i].files[0]) {
-          pImgUrl = await uploadImageFile(pFiles[i].files[0], `websites/${currentUser.uid}/product_${i}_${Date.now()}`);
+          btnSave.innerText = `⏳ Mengunggah Foto Produk #${i+1}...`;
+          pImgUrl = await uploadImageFile(pFiles[i].files[0], `websites/${currentUser.uid}/prod_${i}_${Date.now()}`);
         }
         updatedProducts.push({
           name: pNames[i].value,
@@ -628,6 +684,7 @@ async function renderBuilder() {
         });
       }
 
+      // 3. Layanan
       const sTitles = document.querySelectorAll('.s-title');
       const sDescs = document.querySelectorAll('.s-desc');
       const updatedServices = [];
@@ -635,6 +692,7 @@ async function renderBuilder() {
         updatedServices.push({ title: sTitles[i].value, desc: sDescs[i].value });
       }
 
+      // 4. FAQ
       const fQs = document.querySelectorAll('.f-q');
       const fAs = document.querySelectorAll('.f-a');
       const updatedFaqs = [];
@@ -642,6 +700,7 @@ async function renderBuilder() {
         updatedFaqs.push({ q: fQs[i].value, a: fAs[i].value });
       }
 
+      // 5. Testimoni
       const tNames = document.querySelectorAll('.t-name');
       const tTexts = document.querySelectorAll('.t-text');
       const updatedTestis = [];
@@ -649,6 +708,7 @@ async function renderBuilder() {
         updatedTestis.push({ name: tNames[i].value, text: tTexts[i].value });
       }
 
+      // Simpan Langsung ke Firestore
       await updateDoc(doc(db, 'websites', currentUser.uid), {
         siteName: document.getElementById('siteName').value,
         description: document.getElementById('siteDesc').value,
@@ -672,7 +732,7 @@ async function renderBuilder() {
         updatedAt: serverTimestamp()
       });
 
-      alert('Perubahan berhasil disimpan!');
+      alert('Landing page berhasil disimpan dengan sukses!');
       navigate('#/dashboard');
     } catch (err) {
       alert('Gagal menyimpan: ' + err.message);
@@ -683,7 +743,7 @@ async function renderBuilder() {
   });
 }
 
-// 5. Admin Dashboard & Reviews
+// 5. Admin Panel
 async function renderAdminDashboard() {
   const app = document.getElementById('app');
   app.innerHTML = `
@@ -801,7 +861,7 @@ async function renderAdminReviews() {
   });
 }
 
-// 6. Public Landing Page View (Title & SEO 100% Mengikuti Nama Bisnis)
+// 6. Public Landing Page View (Hero Bersih & Adaptif)
 async function renderPublicLandingPage(username) {
   const root = document.getElementById('app');
   document.getElementById('navbar-container').innerHTML = '';
@@ -820,10 +880,9 @@ async function renderPublicLandingPage(username) {
     const siteDoc = snap.docs[0];
     const site = siteDoc.data();
 
-    // TITLE WEBSITE LANGSUNG DISESUAIKAN DENGAN NAMA BISNIS
-    document.title = site.siteName || "Demo Website";
+    // Set Title Browser Sesuai Nama Bisnis
+    document.title = site.siteName || "Official Website";
     
-    // SEO & OpenGraph Update
     const metaDesc = site.description || `Website resmi ${site.siteName}`;
     const shareImage = site.hero?.imageUrl || (site.products?.[0]?.imageUrl || '');
 
@@ -845,9 +904,9 @@ async function renderPublicLandingPage(username) {
       return;
     }
 
-    // Render Canvas Landing Page
     root.innerHTML = `
       <div class="landing-page">
+        <!-- Hero Section (Opsional Image: Jika tidak ada image, otomatis layout bersih terpusat) -->
         <header class="lp-hero">
           <div class="lp-hero-with-img">
             ${site.hero?.imageUrl ? `<img src="${site.hero.imageUrl}" class="lp-hero-img" alt="${site.siteName}" />` : ''}
@@ -864,6 +923,7 @@ async function renderPublicLandingPage(username) {
           </div>
         </header>
 
+        <!-- Tentang Kami -->
         ${site.about?.content ? `
           <section class="lp-section">
             <h2 class="lp-section-title">${site.about.title || 'Tentang Kami'}</h2>
@@ -873,6 +933,7 @@ async function renderPublicLandingPage(username) {
           </section>
         ` : ''}
 
+        <!-- Layanan -->
         ${site.services?.length ? `
           <section class="lp-section">
             <h2 class="lp-section-title">Layanan & Keunggulan</h2>
@@ -888,6 +949,7 @@ async function renderPublicLandingPage(username) {
           </section>
         ` : ''}
 
+        <!-- Produk -->
         ${site.products?.length ? `
           <section class="lp-section">
             <h2 class="lp-section-title">Pilihan Produk & Paket</h2>
@@ -911,6 +973,7 @@ async function renderPublicLandingPage(username) {
           </section>
         ` : ''}
 
+        <!-- FAQ -->
         ${site.faqs?.length ? `
           <section class="lp-section">
             <h2 class="lp-section-title">Pertanyaan yang Sering Diajukan (FAQ)</h2>
@@ -926,6 +989,7 @@ async function renderPublicLandingPage(username) {
           </section>
         ` : ''}
 
+        <!-- Testimoni -->
         ${site.testimonials?.length ? `
           <section class="lp-section">
             <h2 class="lp-section-title">Ulasan Pelanggan</h2>
@@ -941,6 +1005,7 @@ async function renderPublicLandingPage(username) {
           </section>
         ` : ''}
 
+        <!-- Kontak & Alamat -->
         <section class="lp-section" style="text-align:center; background:#fafafa;">
           <h2 class="lp-section-title">Hubungi Kami</h2>
           <p style="margin-top:0.5rem; color:#475569;">${site.contact?.address || 'Alamat operasional belum dicantumkan.'}</p>
