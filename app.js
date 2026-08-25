@@ -8,8 +8,10 @@ import {
 import { 
   doc, setDoc, getDoc, updateDoc, collection, query, where, getDocs, addDoc, serverTimestamp 
 } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+import { 
+  ref, uploadBytes, getDownloadURL 
+} from "https://www.gstatic.com/firebasejs/10.8.0/firebase-storage.js";
 
-// Ambil Base Path dinamis (misal: /builder/)
 const getBasePath = () => {
   const path = window.location.pathname;
   const segments = path.split('/').filter(Boolean);
@@ -31,38 +33,47 @@ const RESERVED_USERNAMES = [
 let currentUser = null;
 let currentUserProfile = null;
 
-// --- ROUTER ENGINE ---
-// --- ROUTER ENGINE LENGKAP (Support Path, Query, & Hash) ---
+// Helper Upload Image ke Firebase Storage
+async function uploadImageFile(file, path) {
+  if (!file) return null;
+  if (file.size > 5 * 1024 * 1024) {
+    throw new Error('Ukuran file maksimal 5MB.');
+  }
+  const storageRef = ref(storage, path);
+  await uploadBytes(storageRef, file);
+  return await getDownloadURL(storageRef);
+}
+
+// Router
 const router = async () => {
   const path = window.location.pathname;
   const hash = window.location.hash || '';
   const search = window.location.search || '';
 
-  // 1. Cek dari Path (/builder/site/admin)
   let siteMatch = path.match(/\/site\/([a-zA-Z0-9_-]+)/);
-
-  // 2. Cek dari Hash (#/site/admin)
   if (!siteMatch && hash.startsWith('#/site/')) {
     siteMatch = hash.match(/#\/site\/([a-zA-Z0-9_-]+)/);
   }
-
-  // 3. Cek dari Query (?/site/admin atau ?p=/site/admin)
   if (!siteMatch && search.includes('site/')) {
     siteMatch = search.match(/site\/([a-zA-Z0-9_-]+)/);
   }
 
-  // Jika cocok rute website publik
   if (siteMatch) {
     const targetUsername = siteMatch[1].toLowerCase();
-    renderPublicSite(targetUsername);
+    renderPublicLandingPage(targetUsername);
     return;
   }
+
+  // Reset meta tags ke default jika kembali ke admin/dashboard
+  document.title = "Bandar Builder - Landing Page Engine";
+  document.getElementById('meta-desc')?.setAttribute('content', 'Platform Pembuat Landing Page Bisnis & UMKM');
+  document.getElementById('og-title')?.setAttribute('content', 'Bandar Builder');
+  document.getElementById('og-desc')?.setAttribute('content', 'Platform Pembuat Landing Page Bisnis & UMKM');
 
   renderNavbar();
 
   if (hash === '#/register') renderRegister();
   else if (hash === '#/login') renderLogin();
-  else if (hash === '#/terms') renderTerms();
   else if (hash === '#/admin') requireAdmin(renderAdminDashboard);
   else if (hash === '#/admin/reviews') requireAdmin(renderAdminReviews);
   else if (hash === '#/builder') requireAuth(renderBuilder);
@@ -78,7 +89,7 @@ window.addEventListener('load', () => {
         const snap = await getDoc(doc(db, 'users', user.uid));
         currentUserProfile = snap.exists() ? snap.data() : null;
       } catch (err) {
-        console.error("Gagal load profile:", err);
+        console.error("Profile load err:", err);
       }
     } else {
       currentUserProfile = null;
@@ -87,30 +98,26 @@ window.addEventListener('load', () => {
   });
 });
 
-const navigate = (path) => {
-  window.location.hash = path;
-};
+const navigate = (path) => { window.location.hash = path; };
 
-// --- AUTH GUARDS ---
 const requireAuth = (callback) => {
   if (!currentUser) return navigate('#/login');
   if (currentUserProfile?.status === 'suspended' || currentUserProfile?.status === 'banned') {
-    document.getElementById('app').innerHTML = `<div class="card"><h2>Akun Ditangguhkan</h2><p>Akun Anda dinonaktifkan oleh administrator.</p></div>`;
+    document.getElementById('app').innerHTML = `<div class="card"><h2>Akun Ditangguhkan</h2><p>Akun dinonaktifkan oleh administrator.</p></div>`;
     return;
   }
   callback();
 };
 
-const requireAdmin = async (callback) => {
+const requireAdmin = (callback) => {
   if (!currentUser) return navigate('#/login');
   if (currentUserProfile?.role !== 'admin') {
-    document.getElementById('app').innerHTML = `<div class="card"><h2>Akses Ditolak</h2><p>Halaman ini hanya untuk Administrator.</p></div>`;
+    document.getElementById('app').innerHTML = `<div class="card"><h2>Akses Ditolak</h2><p>Hanya untuk Administrator.</p></div>`;
     return;
   }
   callback();
 };
 
-// --- NAVBAR ---
 function renderNavbar() {
   const container = document.getElementById('navbar-container');
   const path = window.location.pathname;
@@ -143,17 +150,15 @@ function renderNavbar() {
   });
 }
 
-// --- VIEWS ---
-
-// 1. Register View
+// 1. Registrasi
 function renderRegister() {
   const app = document.getElementById('app');
   app.innerHTML = `
     <div class="card" style="max-width:450px; margin: 2rem auto;">
-      <h2>Registrasi User</h2>
+      <h2>Registrasi Akun Baru</h2>
       <form id="formRegister" style="margin-top:1rem;">
         <div class="form-group">
-          <label>Nama Lengkap</label>
+          <label>Nama Bisnis / Brand</label>
           <input type="text" id="regName" class="form-control" required />
         </div>
         <div class="form-group">
@@ -165,9 +170,9 @@ function renderRegister() {
           <input type="password" id="regPass" class="form-control" minlength="6" required />
         </div>
         <div class="form-group">
-          <label>Username Domain (/site/username)</label>
-          <input type="text" id="regUsername" class="form-control" placeholder="contoh: laundry-jaya" required />
-          <div class="help-text">3-30 karakter, lowercase, angka, dan tanda '-'</div>
+          <label>Pilih Username (/site/username)</label>
+          <input type="text" id="regUsername" class="form-control" placeholder="contoh: bandar-clean" required />
+          <div class="help-text">3-30 karakter huruf kecil, angka, dan '-'</div>
         </div>
         <button type="submit" class="btn btn-primary" style="width:100%;">Daftar Sekarang</button>
       </form>
@@ -182,19 +187,18 @@ function renderRegister() {
     const username = document.getElementById('regUsername').value.trim().toLowerCase();
 
     if (!/^[a-z0-9-]{3,30}$/.test(username)) {
-      alert('Username tidak valid (Gunakan 3-30 huruf kecil, angka, atau tanda -)');
+      alert('Username tidak valid.');
       return;
     }
-
     if (RESERVED_USERNAMES.includes(username)) {
-      alert('Username ini terdaftar sebagai kata yang dilindungi sistem.');
+      alert('Username dicadangkan oleh sistem.');
       return;
     }
 
     try {
       const uDoc = await getDoc(doc(db, 'usernames', username));
       if (uDoc.exists()) {
-        alert('Username sudah digunakan oleh akun lain!');
+        alert('Username sudah terpakai.');
         return;
       }
 
@@ -211,14 +215,35 @@ function renderRegister() {
         ownerId: uid,
         username,
         siteName: name,
-        description: 'Selamat datang di website resmi kami.',
-        templateId: 'umkm',
+        description: 'Penyedia produk dan layanan terpercaya dengan kualitas terbaik.',
         plan: 'free',
         status: 'draft',
         published: false,
         approved: false,
+        hero: {
+          title: `Solusi Terbaik Bersama ${name}`,
+          subtitle: 'Kualitas profesional dengan pelayanan cepat dan terpercaya.',
+          imageUrl: ''
+        },
+        about: {
+          title: 'Tentang Kami',
+          content: 'Kami berkomitmen untuk memberikan standar mutu tertinggi dalam setiap layanan dan produk kami.'
+        },
+        services: [
+          { title: 'Layanan Cepat', desc: 'Proses pengerjaan kilat dan tepat waktu.' },
+          { title: 'Harga Terjangkau', desc: 'Tarif bersahabat dengan kualitas maksimal.' }
+        ],
         products: [],
-        contact: { whatsapp: '', address: '' },
+        faqs: [
+          { q: 'Bagaimana cara melakukan pemesanan?', a: 'Pilih produk yang diinginkan lalu klik tombol Pesan via WhatsApp.' }
+        ],
+        testimonials: [
+          { name: 'Pelanggan Setia', text: 'Pelayanan sangat ramah dan memuaskan!' }
+        ],
+        contact: {
+          whatsapp: '6281234567890',
+          address: 'Jl. Raya Utama No. 123'
+        },
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp()
       });
@@ -230,7 +255,7 @@ function renderRegister() {
   });
 }
 
-// 2. Login View
+// 2. Login
 function renderLogin() {
   const app = document.getElementById('app');
   app.innerHTML = `
@@ -269,182 +294,378 @@ async function renderDashboard() {
 
   const siteDoc = await getDoc(doc(db, 'websites', currentUser.uid));
   const site = siteDoc.data() || {};
-  const username = site.username || 'admin';
+  const username = site.username || 'user';
 
-  // Format URL publik lengkap dengan base path GitHub Pages
-  const publicRelativeUrl = `${BASE_PATH}/site/${username}`;
-  const publicHashUrl = `${BASE_PATH}/#/site/${username}`;
-  const fullDisplayUrl = `${window.location.origin}${publicRelativeUrl}`;
+  const publicRelativeUrl = `${BASE_PATH}/#/site/${username}`;
+  const fullDisplayUrl = `${window.location.origin}${BASE_PATH}/site/${username}`;
 
   app.innerHTML = `
     <div class="card">
-      <h2>Selamat Datang, ${currentUserProfile?.name || 'Admin'}</h2>
+      <h2>Selamat Datang, ${currentUserProfile?.name || 'User'}</h2>
       <div style="margin-top: 1rem;">
         <p><strong>Website:</strong> ${site.siteName || '-'}</p>
         <p><strong>Username:</strong> @${username}</p>
-        <p><strong>URL Publik:</strong> <a href="${publicRelativeUrl}" target="_blank">${fullDisplayUrl}</a></p>
+        <p><strong>URL Landing Page:</strong> <a href="${publicRelativeUrl}" target="_blank">${fullDisplayUrl}</a></p>
         <p><strong>Paket:</strong> <span class="badge" style="background:#0284c7;">${site.plan?.toUpperCase() || 'FREE'}</span></p>
         <p><strong>Status:</strong> <span class="badge badge-${site.status}">${site.status?.replace('_', ' ').toUpperCase()}</span></p>
         
         ${site.status === 'rejected' ? `
           <div style="margin-top:1rem; padding:0.75rem; background:#fee2e2; border:1px solid #f87171; border-radius:6px; color:#991b1b;">
-            <strong>Catatan Penolakan Moderasi:</strong> ${site.moderationNote || 'Perbaiki konten agar sesuai ketentuan.'}
+            <strong>Catatan Penolakan:</strong> ${site.moderationNote || 'Perbaiki konten agar sesuai ketentuan.'}
           </div>
         ` : ''}
       </div>
 
       <div style="margin-top: 1.5rem; display: flex; gap: 0.5rem; flex-wrap: wrap;">
-        <a href="#/builder" class="btn btn-primary">Edit Website</a>
+        <a href="#/builder" class="btn btn-primary">Edit Landing Page</a>
         <button id="btnSubmitReview" class="btn btn-secondary" ${['pending_review', 'approved', 'published'].includes(site.status) ? 'disabled' : ''}>
           ${site.status === 'pending_review' ? 'Menunggu Review Admin' : 'Ajukan Review'}
         </button>
         <a href="${publicRelativeUrl}" class="btn btn-success" ${site.status !== 'published' ? 'style="opacity:0.5; pointer-events:none;"' : ''}>
-          Lihat Website (Path)
-        </a>
-        <a href="${publicHashUrl}" class="btn btn-secondary" ${site.status !== 'published' ? 'style="opacity:0.5; pointer-events:none;"' : ''}>
-          Lihat Website (Hash Fallback)
+          Lihat Landing Page
         </a>
       </div>
     </div>
   `;
 
   document.getElementById('btnSubmitReview')?.addEventListener('click', async () => {
-    if (confirm('Ajukan website ini untuk diperiksa dan dimoderasi oleh admin?')) {
+    if (confirm('Ajukan landing page ini untuk dimoderasi oleh admin?')) {
       await updateDoc(doc(db, 'websites', currentUser.uid), {
         status: 'pending_review',
         published: false,
         updatedAt: serverTimestamp()
       });
-      alert('Website berhasil diajukan untuk review.');
+      alert('Landing page berhasil diajukan untuk review.');
       renderDashboard();
     }
   });
 }
 
-// 4. Section Builder
+// 4. Section Builder (Hero, About, Services, Products, FAQ, Testimoni, Contact)
 async function renderBuilder() {
   const app = document.getElementById('app');
+  app.innerHTML = `<div class="card"><p>Memuat data builder...</p></div>`;
+
   const siteDoc = await getDoc(doc(db, 'websites', currentUser.uid));
   const site = siteDoc.data() || {};
+
+  let products = site.products || [];
+  let services = site.services || [];
+  let faqs = site.faqs || [];
+  let testimonials = site.testimonials || [];
 
   app.innerHTML = `
     <div class="card">
       <div style="display:flex; justify-content:space-between; align-items:center;">
-        <h2>Website Editor</h2>
+        <h2>Landing Page Builder</h2>
         <a href="#/dashboard" class="btn btn-sm btn-secondary">Kembali</a>
       </div>
       
       <form id="formBuilder" style="margin-top:1.5rem;">
-        <h3>Identitas Bisnis</h3>
+        <!-- SEO & Identitas -->
+        <h3>1. Identitas Bisnis & SEO</h3>
         <div class="form-group">
-          <label>Nama Bisnis</label>
+          <label>Nama Bisnis (Page Title & SEO)</label>
           <input type="text" id="siteName" class="form-control" value="${site.siteName || ''}" required />
         </div>
         <div class="form-group">
-          <label>Deskripsi Singkat</label>
-          <textarea id="siteDesc" class="form-control">${site.description || ''}</textarea>
+          <label>Deskripsi Bisnis (Meta Description & OpenGraph)</label>
+          <textarea id="siteDesc" class="form-control" rows="2" required>${site.description || ''}</textarea>
         </div>
+
+        <hr style="margin: 2rem 0; border: none; border-top: 1px solid var(--border);" />
+
+        <!-- Hero Section -->
+        <h3>2. Hero Section (Header Banner)</h3>
+        <div class="form-group">
+          <label>Judul Utama Hero</label>
+          <input type="text" id="heroTitle" class="form-control" value="${site.hero?.title || ''}" required />
+        </div>
+        <div class="form-group">
+          <label>Subjudul Hero</label>
+          <input type="text" id="heroSubtitle" class="form-control" value="${site.hero?.subtitle || ''}" />
+        </div>
+        <div class="form-group">
+          <label>Upload Gambar Banner Hero (Opsional)</label>
+          <input type="file" id="heroImageFile" class="form-control" accept="image/*" />
+          ${site.hero?.imageUrl ? `<p class="help-text">Gambar saat ini: <a href="${site.hero.imageUrl}" target="_blank">Lihat Banner</a></p>` : ''}
+        </div>
+
+        <hr style="margin: 2rem 0; border: none; border-top: 1px solid var(--border);" />
+
+        <!-- Tentang Kami -->
+        <h3>3. Tentang Kami</h3>
+        <div class="form-group">
+          <label>Judul Section</label>
+          <input type="text" id="aboutTitle" class="form-control" value="${site.about?.title || 'Tentang Kami'}" />
+        </div>
+        <div class="form-group">
+          <label>Konten Cerita / Profil Bisnis</label>
+          <textarea id="aboutContent" class="form-control" rows="3">${site.about?.content || ''}</textarea>
+        </div>
+
+        <hr style="margin: 2rem 0; border: none; border-top: 1px solid var(--border);" />
+
+        <!-- Layanan -->
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <h3>4. Layanan & Keunggulan</h3>
+          <button type="button" id="btnAddService" class="btn btn-sm btn-secondary">+ Tambah Layanan</button>
+        </div>
+        <div id="serviceContainer" style="margin-top:1rem;"></div>
+
+        <hr style="margin: 2rem 0; border: none; border-top: 1px solid var(--border);" />
+
+        <!-- Produk -->
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <h3>5. Produk & Harga (Maks 5 Produk)</h3>
+          <button type="button" id="btnAddProduct" class="btn btn-sm btn-secondary">+ Tambah Produk</button>
+        </div>
+        <div id="productContainer" style="margin-top:1rem;"></div>
+
+        <hr style="margin: 2rem 0; border: none; border-top: 1px solid var(--border);" />
+
+        <!-- FAQ -->
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <h3>6. FAQ (Tanya Jawab)</h3>
+          <button type="button" id="btnAddFaq" class="btn btn-sm btn-secondary">+ Tambah FAQ</button>
+        </div>
+        <div id="faqContainer" style="margin-top:1rem;"></div>
+
+        <hr style="margin: 2rem 0; border: none; border-top: 1px solid var(--border);" />
+
+        <!-- Testimoni -->
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <h3>7. Testimoni Pelanggan</h3>
+          <button type="button" id="btnAddTesti" class="btn btn-sm btn-secondary">+ Tambah Testimoni</button>
+        </div>
+        <div id="testiContainer" style="margin-top:1rem;"></div>
+
+        <hr style="margin: 2rem 0; border: none; border-top: 1px solid var(--border);" />
+
+        <!-- Kontak & CTA -->
+        <h3>8. Kontak & Pemesanan</h3>
         <div class="form-group">
           <label>Nomor WhatsApp (Format: 628xxxxxxxxxx)</label>
-          <input type="text" id="siteWa" class="form-control" value="${site.contact?.whatsapp || ''}" />
+          <input type="text" id="siteWa" class="form-control" value="${site.contact?.whatsapp || ''}" required />
         </div>
         <div class="form-group">
-          <label>Alamat Bisnis</label>
+          <label>Alamat / Lokasi Operasional</label>
           <input type="text" id="siteAddress" class="form-control" value="${site.contact?.address || ''}" />
         </div>
 
-        <hr style="margin: 2rem 0; border: none; border-top: 1px solid var(--border);" />
-
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
-          <h3>Daftar Produk (Maks 5 untuk Free)</h3>
-          <button type="button" id="btnAddProduct" class="btn btn-sm btn-secondary">+ Tambah Produk</button>
-        </div>
-        <div id="productContainer"></div>
-
-        <hr style="margin: 2rem 0; border: none; border-top: 1px solid var(--border);" />
-
-        <button type="submit" class="btn btn-primary">Simpan Draft</button>
+        <button type="submit" id="btnSaveBuilder" class="btn btn-primary" style="margin-top:1.5rem; width:100%;">
+          Simpan Seluruh Perubahan
+        </button>
       </form>
     </div>
   `;
 
-  let products = site.products || [];
-
-  const renderProductInputs = () => {
-    const container = document.getElementById('productContainer');
-    container.innerHTML = products.map((p, idx) => `
+  // Render Layanan
+  const renderServices = () => {
+    const box = document.getElementById('serviceContainer');
+    box.innerHTML = services.map((s, i) => `
       <div class="section-item">
         <div class="section-header">
-          <strong>Produk #${idx + 1}</strong>
-          <button type="button" class="btn btn-sm btn-danger btnDelProd" data-idx="${idx}">Hapus</button>
+          <strong>Layanan #${i + 1}</strong>
+          <button type="button" class="btn btn-sm btn-danger btnDelService" data-idx="${i}">Hapus</button>
         </div>
-        <div class="form-group">
-          <input type="text" class="form-control prod-name" placeholder="Nama Produk" value="${p.name || ''}" required />
-        </div>
-        <div class="form-group">
-          <input type="number" class="form-control prod-price" placeholder="Harga (Rp)" value="${p.price || ''}" required />
-        </div>
-        <div class="form-group">
-          <input type="text" class="form-control prod-desc" placeholder="Keterangan singkat" value="${p.description || ''}" />
-        </div>
+        <input type="text" class="form-control s-title" placeholder="Nama Layanan" value="${s.title || ''}" style="margin-bottom:0.5rem;" required />
+        <input type="text" class="form-control s-desc" placeholder="Keterangan Singkat" value="${s.desc || ''}" />
       </div>
     `).join('');
-
-    document.querySelectorAll('.btnDelProd').forEach(btn => {
-      btn.addEventListener('click', (e) => {
-        const idx = e.target.getAttribute('data-idx');
-        products.splice(idx, 1);
-        renderProductInputs();
-      });
+    document.querySelectorAll('.btnDelService').forEach(b => b.onclick = (e) => {
+      services.splice(e.target.dataset.idx, 1);
+      renderServices();
     });
   };
 
-  renderProductInputs();
+  // Render Produk
+  const renderProducts = () => {
+    const box = document.getElementById('productContainer');
+    box.innerHTML = products.map((p, i) => `
+      <div class="section-item">
+        <div class="section-header">
+          <strong>Produk #${i + 1}</strong>
+          <button type="button" class="btn btn-sm btn-danger btnDelProd" data-idx="${i}">Hapus</button>
+        </div>
+        <div class="form-group">
+          <input type="text" class="form-control p-name" placeholder="Nama Produk" value="${p.name || ''}" required />
+        </div>
+        <div class="form-group">
+          <input type="number" class="form-control p-price" placeholder="Harga (Rp)" value="${p.price || ''}" required />
+        </div>
+        <div class="form-group">
+          <input type="text" class="form-control p-desc" placeholder="Keterangan singkat" value="${p.description || ''}" />
+        </div>
+        <div class="form-group">
+          <label style="font-size:0.8rem;">Upload Foto Produk (Opsional)</label>
+          <input type="file" class="form-control p-file" accept="image/*" />
+          ${p.imageUrl ? `<p class="help-text">Foto saat ini: <a href="${p.imageUrl}" target="_blank">Lihat Foto</a></p>` : ''}
+        </div>
+      </div>
+    `).join('');
+    document.querySelectorAll('.btnDelProd').forEach(b => b.onclick = (e) => {
+      products.splice(e.target.dataset.idx, 1);
+      renderProducts();
+    });
+  };
 
-  document.getElementById('btnAddProduct').addEventListener('click', () => {
-    if (products.length >= 5) {
-      alert('Paket FREE hanya mendukung maksimal 5 produk.');
-      return;
-    }
-    products.push({ name: '', price: '', description: '' });
-    renderProductInputs();
-  });
+  // Render FAQ
+  const renderFaqs = () => {
+    const box = document.getElementById('faqContainer');
+    box.innerHTML = faqs.map((f, i) => `
+      <div class="section-item">
+        <div class="section-header">
+          <strong>Pertanyaan #${i + 1}</strong>
+          <button type="button" class="btn btn-sm btn-danger btnDelFaq" data-idx="${i}">Hapus</button>
+        </div>
+        <input type="text" class="form-control f-q" placeholder="Pertanyaan (Q)" value="${f.q || ''}" style="margin-bottom:0.5rem;" required />
+        <textarea class="form-control f-a" placeholder="Jawaban (A)" rows="2">${f.a || ''}</textarea>
+      </div>
+    `).join('');
+    document.querySelectorAll('.btnDelFaq').forEach(b => b.onclick = (e) => {
+      faqs.splice(e.target.dataset.idx, 1);
+      renderFaqs();
+    });
+  };
 
+  // Render Testimoni
+  const renderTestis = () => {
+    const box = document.getElementById('testiContainer');
+    box.innerHTML = testimonials.map((t, i) => `
+      <div class="section-item">
+        <div class="section-header">
+          <strong>Testimoni #${i + 1}</strong>
+          <button type="button" class="btn btn-sm btn-danger btnDelTesti" data-idx="${i}">Hapus</button>
+        </div>
+        <input type="text" class="form-control t-name" placeholder="Nama Pelanggan" value="${t.name || ''}" style="margin-bottom:0.5rem;" required />
+        <textarea class="form-control t-text" placeholder="Ulasan / Feedback" rows="2">${t.text || ''}</textarea>
+      </div>
+    `).join('');
+    document.querySelectorAll('.btnDelTesti').forEach(b => b.onclick = (e) => {
+      testimonials.splice(e.target.dataset.idx, 1);
+      renderTestis();
+    });
+  };
+
+  renderServices();
+  renderProducts();
+  renderFaqs();
+  renderTestis();
+
+  document.getElementById('btnAddService').onclick = () => {
+    services.push({ title: '', desc: '' });
+    renderServices();
+  };
+  document.getElementById('btnAddProduct').onclick = () => {
+    if (products.length >= 5) return alert('Paket Free dibatasi maksimal 5 produk.');
+    products.push({ name: '', price: '', description: '', imageUrl: '' });
+    renderProducts();
+  };
+  document.getElementById('btnAddFaq').onclick = () => {
+    faqs.push({ q: '', a: '' });
+    renderFaqs();
+  };
+  document.getElementById('btnAddTesti').onclick = () => {
+    testimonials.push({ name: '', text: '' });
+    renderTestis();
+  };
+
+  // Submit & Upload Data
   document.getElementById('formBuilder').addEventListener('submit', async (e) => {
     e.preventDefault();
-    const names = document.querySelectorAll('.prod-name');
-    const prices = document.querySelectorAll('.prod-price');
-    const descs = document.querySelectorAll('.prod-desc');
-    const updatedProducts = [];
-
-    for (let i = 0; i < names.length; i++) {
-      updatedProducts.push({
-        name: names[i].value,
-        price: Number(prices[i].value),
-        description: descs[i].value
-      });
-    }
+    const btnSave = document.getElementById('btnSaveBuilder');
+    btnSave.disabled = true;
+    btnSave.innerText = "Menyimpan & Mengunggah Gambar...";
 
     try {
+      // 1. Upload Hero Image jika ada
+      let heroImgUrl = site.hero?.imageUrl || '';
+      const heroFileInput = document.getElementById('heroImageFile');
+      if (heroFileInput.files[0]) {
+        heroImgUrl = await uploadImageFile(heroFileInput.files[0], `websites/${currentUser.uid}/hero_${Date.now()}`);
+      }
+
+      // 2. Ambil & Upload Gambar Produk
+      const pNames = document.querySelectorAll('.p-name');
+      const pPrices = document.querySelectorAll('.p-price');
+      const pDescs = document.querySelectorAll('.p-desc');
+      const pFiles = document.querySelectorAll('.p-file');
+
+      const updatedProducts = [];
+      for (let i = 0; i < pNames.length; i++) {
+        let pImgUrl = products[i]?.imageUrl || '';
+        if (pFiles[i].files[0]) {
+          pImgUrl = await uploadImageFile(pFiles[i].files[0], `websites/${currentUser.uid}/product_${i}_${Date.now()}`);
+        }
+        updatedProducts.push({
+          name: pNames[i].value,
+          price: Number(pPrices[i].value),
+          description: pDescs[i].value,
+          imageUrl: pImgUrl
+        });
+      }
+
+      // 3. Ambil data layanan
+      const sTitles = document.querySelectorAll('.s-title');
+      const sDescs = document.querySelectorAll('.s-desc');
+      const updatedServices = [];
+      for (let i = 0; i < sTitles.length; i++) {
+        updatedServices.push({ title: sTitles[i].value, desc: sDescs[i].value });
+      }
+
+      // 4. Ambil FAQ
+      const fQs = document.querySelectorAll('.f-q');
+      const fAs = document.querySelectorAll('.f-a');
+      const updatedFaqs = [];
+      for (let i = 0; i < fQs.length; i++) {
+        updatedFaqs.push({ q: fQs[i].value, a: fAs[i].value });
+      }
+
+      // 5. Ambil Testimoni
+      const tNames = document.querySelectorAll('.t-name');
+      const tTexts = document.querySelectorAll('.t-text');
+      const updatedTestis = [];
+      for (let i = 0; i < tNames.length; i++) {
+        updatedTestis.push({ name: tNames[i].value, text: tTexts[i].value });
+      }
+
+      // Simpan ke Firestore
       await updateDoc(doc(db, 'websites', currentUser.uid), {
         siteName: document.getElementById('siteName').value,
         description: document.getElementById('siteDesc').value,
+        hero: {
+          title: document.getElementById('heroTitle').value,
+          subtitle: document.getElementById('heroSubtitle').value,
+          imageUrl: heroImgUrl
+        },
+        about: {
+          title: document.getElementById('aboutTitle').value,
+          content: document.getElementById('aboutContent').value
+        },
+        services: updatedServices,
+        products: updatedProducts,
+        faqs: updatedFaqs,
+        testimonials: updatedTestis,
         contact: {
           whatsapp: document.getElementById('siteWa').value,
           address: document.getElementById('siteAddress').value
         },
-        products: updatedProducts,
         updatedAt: serverTimestamp()
       });
-      alert('Draft website berhasil disimpan.');
+
+      alert('Landing page berhasil disimpan!');
       navigate('#/dashboard');
     } catch (err) {
       alert('Gagal menyimpan: ' + err.message);
+    } finally {
+      btnSave.disabled = false;
+      btnSave.innerText = "Simpan Seluruh Perubahan";
     }
   });
 }
 
-// 5. Admin Panel
+// 5. Admin Dashboard & Reviews
 async function renderAdminDashboard() {
   const app = document.getElementById('app');
   app.innerHTML = `
@@ -453,18 +674,18 @@ async function renderAdminDashboard() {
         <h2>Admin Moderation Dashboard</h2>
         <a href="#/admin/reviews" class="btn btn-primary">Buka Antrean Review</a>
       </div>
-      <div class="site-grid" style="margin-top:1.5rem;">
-        <div class="site-card">
-          <h4 id="statUsers">-</h4>
+      <div class="lp-grid" style="margin-top:1.5rem;">
+        <div class="lp-card">
+          <h2 id="statUsers" style="color:var(--primary);">-</h2>
           <p>Total User</p>
         </div>
-        <div class="site-card">
-          <h4 id="statPending">-</h4>
+        <div class="lp-card">
+          <h2 id="statPending" style="color:var(--badge-pending);">-</h2>
           <p>Menunggu Review</p>
         </div>
-        <div class="site-card">
-          <h4 id="statPublished">-</h4>
-          <p>Website Aktif</p>
+        <div class="lp-card">
+          <h2 id="statPublished" style="color:var(--badge-published);">-</h2>
+          <p>Landing Page Aktif</p>
         </div>
       </div>
     </div>
@@ -481,7 +702,7 @@ async function renderAdminDashboard() {
 
 async function renderAdminReviews() {
   const app = document.getElementById('app');
-  app.innerHTML = `<div class="card"><p>Memuat antrean review...</p></div>`;
+  app.innerHTML = `<div class="card"><p>Memuat antrean...</p></div>`;
 
   const q = query(collection(db, 'websites'), where('status', '==', 'pending_review'));
   const snap = await getDocs(q);
@@ -490,7 +711,7 @@ async function renderAdminReviews() {
     app.innerHTML = `
       <div class="card">
         <h2>Antrean Moderasi</h2>
-        <p style="margin-top:1rem;">Tidak ada website yang sedang menunggu review.</p>
+        <p style="margin-top:1rem;">Tidak ada website/landing page yang menunggu review.</p>
         <a href="#/admin" class="btn btn-secondary" style="margin-top:1rem;">Kembali</a>
       </div>
     `;
@@ -499,50 +720,36 @@ async function renderAdminReviews() {
 
   let html = `
     <div class="card">
-      <h2>Antrean Moderasi Website</h2>
-      <div class="table-responsive">
-        <table>
-          <thead>
-            <tr>
-              <th>Bisnis</th>
-              <th>Username</th>
-              <th>Owner ID</th>
-              <th>Aksi</th>
-            </tr>
-          </thead>
-          <tbody>
+      <h2>Antrean Moderasi Landing Page</h2>
+      <div style="margin-top:1rem;">
   `;
 
   snap.forEach(docSnap => {
     const data = docSnap.data();
     html += `
-      <tr>
-        <td><strong>${data.siteName}</strong></td>
-        <td>@${data.username}</td>
-        <td><code>${data.ownerId}</code></td>
-        <td>
-          <button class="btn btn-sm btn-secondary btnPreviewAdmin" data-user="${data.username}">Preview</button>
+      <div class="section-item">
+        <h3>${data.siteName} (@${data.username})</h3>
+        <p style="color:var(--text-muted); font-size:0.9rem; margin-top:0.25rem;">${data.description || '-'}</p>
+        <div style="margin-top:1rem; display:flex; gap:0.5rem;">
+          <button class="btn btn-sm btn-secondary btnPreviewAdmin" data-user="${data.username}">Preview Landing Page</button>
           <button class="btn btn-sm btn-success btnApprove" data-id="${docSnap.id}">Approve</button>
           <button class="btn btn-sm btn-danger btnReject" data-id="${docSnap.id}">Reject</button>
-          <button class="btn btn-sm btn-danger btnSuspend" data-id="${docSnap.id}">Suspend</button>
-        </td>
-      </tr>
+        </div>
+      </div>
     `;
   });
 
-  html += `</tbody></table></div><a href="#/admin" class="btn btn-secondary" style="margin-top:1rem;">Kembali</a></div>`;
+  html += `</div><a href="#/admin" class="btn btn-secondary">Kembali ke Admin</a></div>`;
   app.innerHTML = html;
 
   document.querySelectorAll('.btnPreviewAdmin').forEach(b => {
-    b.addEventListener('click', (e) => {
-      window.open(`${BASE_PATH}/site/${e.target.dataset.user}`, '_blank');
-    });
+    b.onclick = (e) => window.open(`${BASE_PATH}/#/site/${e.target.dataset.user}`, '_blank');
   });
 
   document.querySelectorAll('.btnApprove').forEach(b => {
-    b.addEventListener('click', async (e) => {
+    b.onclick = async (e) => {
       const siteId = e.target.dataset.id;
-      if (confirm('Setujui dan publikasikan website ini?')) {
+      if (confirm('Setujui dan publikasikan landing page ini?')) {
         await updateDoc(doc(db, 'websites', siteId), {
           status: 'published',
           published: true,
@@ -550,25 +757,16 @@ async function renderAdminReviews() {
           reviewedBy: currentUser.uid,
           reviewedAt: serverTimestamp()
         });
-
-        await addDoc(collection(db, 'moderationLogs'), {
-          adminId: currentUser.uid,
-          websiteId: siteId,
-          action: 'approve',
-          reason: 'Konten lolos moderasi standard',
-          createdAt: serverTimestamp()
-        });
-
-        alert('Website resmi dipublikasikan!');
+        alert('Landing page berhasil disetujui!');
         renderAdminReviews();
       }
-    });
+    };
   });
 
   document.querySelectorAll('.btnReject').forEach(b => {
-    b.addEventListener('click', async (e) => {
+    b.onclick = async (e) => {
       const siteId = e.target.dataset.id;
-      const reason = prompt('Masukkan alasan penolakan website:');
+      const reason = prompt('Alasan penolakan:');
       if (reason) {
         await updateDoc(doc(db, 'websites', siteId), {
           status: 'rejected',
@@ -578,67 +776,25 @@ async function renderAdminReviews() {
           reviewedBy: currentUser.uid,
           reviewedAt: serverTimestamp()
         });
-
-        await addDoc(collection(db, 'moderationLogs'), {
-          adminId: currentUser.uid,
-          websiteId: siteId,
-          action: 'reject',
-          reason,
-          createdAt: serverTimestamp()
-        });
-
-        alert('Website ditolak.');
+        alert('Landing page ditolak.');
         renderAdminReviews();
       }
-    });
-  });
-
-  document.querySelectorAll('.btnSuspend').forEach(b => {
-    b.addEventListener('click', async (e) => {
-      const siteId = e.target.dataset.id;
-      const reason = prompt('Alasan penangguhan (Penipuan/Spam/Judi/Konten Ilegal):');
-      if (reason) {
-        await updateDoc(doc(db, 'websites', siteId), {
-          status: 'suspended',
-          published: false,
-          moderationNote: reason,
-          reviewedBy: currentUser.uid,
-          reviewedAt: serverTimestamp()
-        });
-
-        await addDoc(collection(db, 'moderationLogs'), {
-          adminId: currentUser.uid,
-          websiteId: siteId,
-          action: 'suspend',
-          reason,
-          createdAt: serverTimestamp()
-        });
-
-        alert('Website telah disuspend!');
-        renderAdminReviews();
-      }
-    });
+    };
   });
 }
 
-// 6. Public Site Renderer
-async function renderPublicSite(username) {
+// 6. Public Landing Page View (SEO, OpenGraph, Tanpa Header/Footer Aplikasi)
+async function renderPublicLandingPage(username) {
   const root = document.getElementById('app');
-  document.getElementById('navbar-container').innerHTML = '';
-  root.innerHTML = `<div style="text-align:center; padding:4rem;">Memuat website @${username}...</div>`;
+  document.getElementById('navbar-container').innerHTML = ''; // Hilangkan navbar aplikasi
+  root.innerHTML = `<div style="text-align:center; padding:5rem 0;">Memuat landing page @${username}...</div>`;
 
   try {
     const q = query(collection(db, 'websites'), where('username', '==', username));
     const snap = await getDocs(q);
 
     if (snap.empty) {
-      root.innerHTML = `
-        <div class="card" style="text-align:center;">
-          <h2>404 - Tidak Ditemukan</h2>
-          <p>Website dengan username @${username} tidak ditemukan di database.</p>
-          <a href="${BASE_PATH}/#/dashboard" class="btn btn-secondary" style="margin-top:1rem;">Ke Dashboard</a>
-        </div>
-      `;
+      root.innerHTML = `<div class="card" style="text-align:center; margin:3rem auto; max-width:500px;"><h2>404 - Tidak Ditemukan</h2><p>Landing page @${username} tidak terdaftar.</p></div>`;
       return;
     }
 
@@ -646,7 +802,7 @@ async function renderPublicSite(username) {
     const site = siteDoc.data();
 
     if (site.status === 'suspended') {
-      root.innerHTML = `<div class="card" style="text-align:center; color:#991b1b;"><h2>Website Ditangguhkan</h2><p>Website ini sedang tidak tersedia karena melanggar aturan platform.</p></div>`;
+      root.innerHTML = `<div class="card" style="text-align:center; margin:3rem auto; max-width:500px; color:#991b1b;"><h2>Website Ditangguhkan</h2><p>Landing page ini tidak dapat diakses karena pelanggaran aturan platform.</p></div>`;
       return;
     }
 
@@ -654,30 +810,83 @@ async function renderPublicSite(username) {
     const isAdminUser = currentUserProfile?.role === 'admin';
 
     if (site.status !== 'published' && !isOwner && !isAdminUser) {
-      root.innerHTML = `<div class="card" style="text-align:center;"><h2>Website Belum Publik</h2><p>Website ini sedang dalam masa peninjauan atau masih berstatus draft.</p></div>`;
+      root.innerHTML = `<div class="card" style="text-align:center; margin:3rem auto; max-width:500px;"><h2>Website Belum Publik</h2><p>Landing page ini sedang dalam proses moderasi atau berstatus draft.</p></div>`;
       return;
     }
 
+    // Dynamic SEO & OpenGraph Injection
+    const fullTitle = `${site.siteName} | Official Website`;
+    const fullDesc = site.description || `Kunjungi website resmi ${site.siteName}`;
+    const shareImage = site.hero?.imageUrl || (site.products?.[0]?.imageUrl || '');
+
+    document.title = fullTitle;
+    document.getElementById('meta-desc')?.setAttribute('content', fullDesc);
+    document.getElementById('og-title')?.setAttribute('content', fullTitle);
+    document.getElementById('og-desc')?.setAttribute('content', fullDesc);
+    document.getElementById('og-image')?.setAttribute('content', shareImage);
+
+    // Render Landing Page Canvas Murni
     root.innerHTML = `
-      <div class="public-site-view">
-        <header class="site-hero">
-          <h1>${site.siteName || 'Bandar Official'}</h1>
-          <p style="margin-top:0.5rem; color:var(--text-muted);">${site.description || ''}</p>
+      <div class="landing-page">
+        <!-- Hero Section -->
+        <header class="lp-hero">
+          <div class="lp-hero-with-img">
+            ${site.hero?.imageUrl ? `<img src="${site.hero.imageUrl}" class="lp-hero-img" alt="${site.siteName}" />` : ''}
+            <div>
+              <h1>${site.hero?.title || site.siteName}</h1>
+              <p>${site.hero?.subtitle || site.description || ''}</p>
+              ${site.contact?.whatsapp ? `
+                <a href="https://wa.me/${site.contact.whatsapp}?text=Halo%20${encodeURIComponent(site.siteName)},%20saya%20tertarik%20dengan%20layanan%20Anda" 
+                   target="_blank" class="btn btn-success" style="font-size:1.1rem; padding:0.85rem 2rem;">
+                   💬 Hubungi via WhatsApp
+                </a>
+              ` : ''}
+            </div>
+          </div>
         </header>
 
+        <!-- Tentang Kami -->
+        ${site.about?.content ? `
+          <section class="lp-section">
+            <h2 class="lp-section-title">${site.about.title || 'Tentang Kami'}</h2>
+            <p style="text-align:center; max-width:700px; margin:1rem auto; color:#334155; font-size:1.05rem;">
+              ${site.about.content}
+            </p>
+          </section>
+        ` : ''}
+
+        <!-- Layanan -->
+        ${site.services?.length ? `
+          <section class="lp-section">
+            <h2 class="lp-section-title">Layanan & Keunggulan</h2>
+            <p class="lp-section-sub">Mengapa Anda harus memilih kami</p>
+            <div class="lp-grid">
+              ${site.services.map(s => `
+                <div class="lp-card">
+                  <h3 style="color:#0f172a; margin-bottom:0.5rem;">${s.title}</h3>
+                  <p style="color:var(--text-muted); font-size:0.95rem;">${s.desc || ''}</p>
+                </div>
+              `).join('')}
+            </div>
+          </section>
+        ` : ''}
+
+        <!-- Produk / Paket -->
         ${site.products?.length ? `
-          <section class="site-section">
-            <h2 style="text-align:center; margin-bottom:1.5rem;">Katalog Produk</h2>
-            <div class="site-grid">
+          <section class="lp-section">
+            <h2 class="lp-section-title">Pilihan Produk & Paket</h2>
+            <p class="lp-section-sub">Dapatkan penawaran terbaik hari ini</p>
+            <div class="lp-grid">
               ${site.products.map(p => `
-                <div class="site-card">
+                <div class="lp-card">
+                  ${p.imageUrl ? `<img src="${p.imageUrl}" class="lp-prod-img" alt="${p.name}" />` : ''}
                   <h3>${p.name}</h3>
-                  <p style="color:var(--primary); font-weight:700; margin: 0.5rem 0;">Rp ${Number(p.price).toLocaleString('id-ID')}</p>
-                  <p style="font-size:0.85rem; color:var(--text-muted);">${p.description || ''}</p>
+                  <div class="lp-prod-price">Rp ${Number(p.price).toLocaleString('id-ID')}</div>
+                  <p style="color:var(--text-muted); font-size:0.85rem; margin-bottom:1rem;">${p.description || ''}</p>
                   ${site.contact?.whatsapp ? `
-                    <a href="https://wa.me/${site.contact.whatsapp}?text=Halo%20saya%20tertarik%20pesan%20${encodeURIComponent(p.name)}" 
-                       target="_blank" class="btn btn-sm btn-success" style="margin-top:0.75rem;">
-                       Pesan via WhatsApp
+                    <a href="https://wa.me/${site.contact.whatsapp}?text=Halo%20${encodeURIComponent(site.siteName)},%20saya%20mau%20pesan%20${encodeURIComponent(p.name)}" 
+                       target="_blank" class="btn btn-sm btn-primary" style="width:100%;">
+                       Pesan Sekarang
                     </a>
                   ` : ''}
                 </div>
@@ -686,54 +895,71 @@ async function renderPublicSite(username) {
           </section>
         ` : ''}
 
-        <section class="site-section" style="text-align:center;">
-          <h2>Hubungi Kami</h2>
-          <p style="margin-top:0.5rem;">${site.contact?.address || 'Alamat belum diatur.'}</p>
-          ${site.contact?.whatsapp ? `<p>WhatsApp: <strong>+${site.contact.whatsapp}</strong></p>` : ''}
+        <!-- FAQ -->
+        ${site.faqs?.length ? `
+          <section class="lp-section">
+            <h2 class="lp-section-title">Pertanyaan yang Sering Diajukan</h2>
+            <p class="lp-section-sub">Temukan jawaban cepat atas pertanyaan Anda</p>
+            <div style="max-width:700px; margin:0 auto;">
+              ${site.faqs.map(f => `
+                <div class="lp-faq-item">
+                  <div class="lp-faq-q">❓ ${f.q}</div>
+                  <div class="lp-faq-a">${f.a}</div>
+                </div>
+              `).join('')}
+            </div>
+          </section>
+        ` : ''}
+
+        <!-- Testimoni -->
+        ${site.testimonials?.length ? `
+          <section class="lp-section">
+            <h2 class="lp-section-title">Ulasan Pelanggan</h2>
+            <p class="lp-section-sub">Apa kata mereka tentang pengalaman bersama kami</p>
+            <div class="lp-grid">
+              ${site.testimonials.map(t => `
+                <div class="lp-testi-card">
+                  "${t.text}"
+                  <div class="lp-testi-author">— ${t.name}</div>
+                </div>
+              `).join('')}
+            </div>
+          </section>
+        ` : ''}
+
+        <!-- Kontak & Alamat -->
+        <section class="lp-section" style="text-align:center; background:#fafafa;">
+          <h2 class="lp-section-title">Hubungi Kami</h2>
+          <p style="margin-top:0.5rem; color:#475569;">${site.contact?.address || 'Alamat operasional belum dicantumkan.'}</p>
+          ${site.contact?.whatsapp ? `
+            <div style="margin-top:1.5rem;">
+              <a href="https://wa.me/${site.contact.whatsapp}" target="_blank" class="btn btn-success">
+                Chat WhatsApp (+${site.contact.whatsapp})
+              </a>
+            </div>
+          ` : ''}
         </section>
 
-        <footer class="report-bar">
-          <p>&copy; ${new Date().getFullYear()} ${site.siteName || 'Bandar'} &bull; Powered by BandarBuilder</p>
-          <a href="javascript:void(0)" id="btnReport" style="color:var(--text-muted); text-decoration:underline; font-size:0.75rem;">Laporkan Website</a>
-        </footer>
+        <!-- Minimal Report Bar -->
+        <div class="lp-report-bar">
+          <span>&copy; ${new Date().getFullYear()} ${site.siteName}</span> &bull; 
+          <a href="javascript:void(0)" id="btnReport" style="color:var(--text-muted); text-decoration:underline;">Laporkan Halaman</a>
+        </div>
       </div>
     `;
 
     document.getElementById('btnReport')?.addEventListener('click', () => {
-      renderReportModal(siteDoc.id);
+      const reason = prompt("Alasan Laporan (Penipuan/Spam/Judi/Konten Ilegal):");
+      if (reason) {
+        addDoc(collection(db, 'reports'), {
+          websiteId: siteDoc.id,
+          reason,
+          createdAt: serverTimestamp()
+        }).then(() => alert('Laporan terkirim.'));
+      }
     });
 
   } catch (err) {
-    root.innerHTML = `<div class="card">Terjadi kesalahan: ${err.message}</div>`;
+    root.innerHTML = `<div class="card">Gagal memuat: ${err.message}</div>`;
   }
-}
-
-// 7. Abuse Reporting
-function renderReportModal(websiteId) {
-  const reason = prompt("Pilih Alasan Laporan:\n1. Penipuan\n2. Spam\n3. Judi\n4. Phishing\n5. Konten Ilegal\n\nKetik alasan:");
-  if (!reason) return;
-  
-  const desc = prompt("Keterangan tambahan (opsional):");
-  const email = prompt("Email pelapor (opsional):");
-
-  addDoc(collection(db, 'reports'), {
-    websiteId,
-    reason,
-    description: desc || '',
-    reporterEmail: email || 'anonymous',
-    status: 'new',
-    createdAt: serverTimestamp()
-  }).then(() => {
-    alert('Laporan Anda telah dikirim untuk ditinjau oleh tim keamanan.');
-  }).catch(err => alert('Gagal mengirim laporan: ' + err.message));
-}
-
-// 8. Terms
-function renderTerms() {
-  document.getElementById('app').innerHTML = `
-    <div class="card">
-      <h2>Kebijakan Penggunaan Platform</h2>
-      <p style="margin-top:1rem;">Platform ini melarang segala bentuk penipuan, judi, spam, dan konten ilegal.</p>
-    </div>
-  `;
 }
