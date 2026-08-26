@@ -13,7 +13,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-storage.js";
 
 // ========================================================
-// TOAST & MODAL ENGINE
+// 1. TOAST NOTIFICATION & MODAL ENGINE
 // ========================================================
 export function showToast(message, type = 'info', duration = 3500) {
   const container = document.getElementById('toast-container');
@@ -96,11 +96,12 @@ export function showPrompt(title, message, defaultValue = '', onConfirm, placeho
   };
 }
 
-// Modal Laporan Target URL Lengkap & Anti-Spam
-export function showReportModal(websiteId, targetUrl, siteName) {
-  // Cek apakah perangkat sudah pernah melaporkan URL ini
+// Modal Laporan Berbasis Username & Anti-Spam
+export function showReportModal(websiteId, username, siteName) {
+  const fullPublicUrl = `${window.location.origin}${BASE_PATH}/#/site/${username}`;
+
   const reportedSites = JSON.parse(localStorage.getItem('bandar_reported_urls') || '[]');
-  if (reportedSites.includes(targetUrl)) {
+  if (reportedSites.includes(username) || reportedSites.includes(fullPublicUrl)) {
     showToast('Anda sudah pernah mengirimkan laporan untuk website ini.', 'warning', 4000);
     return;
   }
@@ -113,8 +114,9 @@ export function showReportModal(websiteId, targetUrl, siteName) {
       <div class="modal-title">Laporkan Website</div>
       <div class="modal-body">
         <div style="background:#f1f5f9; padding:0.6rem; border-radius:6px; margin-bottom:1rem; font-size:0.85rem;">
+          <strong>Target Website:</strong> ${siteName} (@${username})<br/>
           <strong>Target URL:</strong><br/>
-          <span class="url-box" style="color:var(--primary); font-weight:600;">${targetUrl}</span>
+          <span class="url-box" style="color:var(--primary); font-weight:600;">${fullPublicUrl}</span>
         </div>
         <div class="form-group">
           <label>Alasan Pelanggaran</label>
@@ -155,7 +157,8 @@ export function showReportModal(websiteId, targetUrl, siteName) {
     try {
       await addDoc(collection(db, 'reports'), {
         websiteId,
-        targetUrl,
+        username,
+        targetUrl: fullPublicUrl,
         siteName,
         reason,
         description,
@@ -164,8 +167,8 @@ export function showReportModal(websiteId, targetUrl, siteName) {
         createdAt: serverTimestamp()
       });
 
-      // Simpan URL di LocalStorage perangkat pelapor
-      reportedSites.push(targetUrl);
+      reportedSites.push(username);
+      reportedSites.push(fullPublicUrl);
       localStorage.setItem('bandar_reported_urls', JSON.stringify(reportedSites));
 
       showToast('Laporan telah dikirim ke Admin untuk diperiksa.', 'success');
@@ -176,7 +179,7 @@ export function showReportModal(websiteId, targetUrl, siteName) {
 }
 
 // ========================================================
-// SMART ULTRA-LIGHT IMAGE COMPRESSOR (~50KB - 90KB, HD Sharpening)
+// 2. ULTRA-LIGHT COMPRESSOR (~50KB - 80KB, Tetap Tajam HD)
 // ========================================================
 async function compressImageToUltraLight(file) {
   return new Promise((resolve, reject) => {
@@ -186,7 +189,6 @@ async function compressImageToUltraLight(file) {
       const img = new Image();
       img.src = event.target.result;
       img.onload = () => {
-        // Pertahankan lebar 1080px (Standar HD tajam untuk komputer & HP)
         let maxDim = 1080;
         let width = img.width;
         let height = img.height;
@@ -204,12 +206,10 @@ async function compressImageToUltraLight(file) {
         canvas.height = height;
         const ctx = canvas.getContext('2d');
         
-        // Anti-aliasing rendering untuk menjaga ketajaman font & detail produk
         ctx.imageSmoothingEnabled = true;
         ctx.imageSmoothingQuality = 'high';
         ctx.drawImage(img, 0, 0, width, height);
 
-        // Kualitas 0.65 menghasilkan ukuran ~40KB - 80KB dengan visual sangat tajam
         canvas.toBlob((blob) => {
           if (blob) resolve(blob);
           else reject(new Error('Gagal kompres gambar'));
@@ -236,7 +236,7 @@ async function uploadImageFile(file, path) {
 }
 
 // ========================================================
-// ROUTER & CORE ENGINE
+// 3. ROUTER & GLOBAL STATE
 // ========================================================
 const getBasePath = () => {
   const path = window.location.pathname;
@@ -307,7 +307,6 @@ const router = async () => {
   else if (hash === '#/admin') requireAdmin(renderAdminDashboard);
   else if (hash === '#/admin/reviews') requireAdmin(renderAdminReviews);
   else if (hash.startsWith('#/builder')) requireAuth(() => {
-    // Tangkap section tab dari hash: #/builder?tab=hero
     const urlParams = new URLSearchParams(hash.split('?')[1] || '');
     const activeSection = urlParams.get('tab') || 'identity';
     renderModularBuilder(activeSection);
@@ -596,6 +595,7 @@ async function renderDashboard() {
       </div>
     </div>
 
+    <!-- Pilihan Cepat Edit Komponen Modular -->
     <div class="card">
       <h3>Komponen & Layanan Landing Page</h3>
       <p class="help-text" style="margin-bottom:1rem;">Pilih bagian yang ingin diedit secara spesifik:</p>
@@ -661,7 +661,7 @@ async function renderDashboard() {
   });
 }
 
-// 4. MODULAR SECTION BUILDER (Hanya Menampilkan Bagian yang Dipilih)
+// 4. MODULAR SECTION BUILDER
 async function renderModularBuilder(activeTab = 'identity') {
   const app = document.getElementById('app');
   app.innerHTML = `<div class="card"><p>Memuat editor...</p></div>`;
@@ -696,7 +696,6 @@ async function renderModularBuilder(activeTab = 'identity') {
     </div>
   `;
 
-  // Formulir Spesifik Berdasarkan Tab Aktif
   let formBodyHtml = '';
 
   if (activeTab === 'identity') {
@@ -806,7 +805,6 @@ async function renderModularBuilder(activeTab = 'identity') {
     </div>
   `;
 
-  // Tab Switching Listener
   document.querySelectorAll('.builder-tab-btn').forEach(btn => {
     btn.onclick = (e) => {
       const targetTab = e.target.dataset.tab;
@@ -814,7 +812,6 @@ async function renderModularBuilder(activeTab = 'identity') {
     };
   });
 
-  // Render Sub-Komponen Berdasarkan Tab
   if (activeTab === 'services') {
     const renderServices = () => {
       const box = document.getElementById('serviceContainer');
@@ -932,7 +929,6 @@ async function renderModularBuilder(activeTab = 'identity') {
     };
   }
 
-  // Submit Handler Per-Section (Menyimpan Hanya Perubahan Terkait)
   document.getElementById('formModularBuilder').addEventListener('submit', async (e) => {
     e.preventDefault();
     const btnSave = document.getElementById('btnSaveBuilder');
@@ -1044,7 +1040,7 @@ async function renderAdminDashboard() {
   const adminSite = adminSiteDoc.data() || {};
   const adminDemoUrl = `${BASE_PATH}/#/site/${adminSite.username || 'admin'}`;
 
-  // 1. Baris Tabel Users
+  // 1. Users Table
   let usersHtml = '';
   uSnap.forEach(uDoc => {
     const u = uDoc.data();
@@ -1086,7 +1082,7 @@ async function renderAdminDashboard() {
     `;
   });
 
-  // 2. Baris Tabel Websites
+  // 2. Websites Table
   let sitesHtml = '';
   wSnap.forEach(docSnap => {
     const site = docSnap.data();
@@ -1136,7 +1132,7 @@ async function renderAdminDashboard() {
     `;
   });
 
-  // 3. Baris Tabel Laporan Pelanggaran (Dengan URL Landing Page Lengkap)
+  // 3. Reports Table (URL Berbasis Username Bebas 404)
   let reportsHtml = '';
   let newReportsCount = 0;
   repSnap.forEach(rDoc => {
@@ -1146,12 +1142,13 @@ async function renderAdminDashboard() {
     if (isNew) newReportsCount++;
 
     const dateStr = r.createdAt?.toDate ? r.createdAt.toDate().toLocaleDateString('id-ID') : 'Baru saja';
-    const reportedUrl = r.targetUrl || `${window.location.origin}${BASE_PATH}/#/site/${r.websiteId}`;
+    const siteUsername = r.username || r.siteName || '';
+    const reportedUrl = r.targetUrl || `${window.location.origin}${BASE_PATH}/#/site/${siteUsername}`;
 
     reportsHtml += `
       <tr style="${isNew ? 'background:#fffbeb;' : ''}">
         <td>
-          <strong>${r.siteName || '-'}</strong><br/>
+          <strong>${r.siteName || '-'}</strong> ${siteUsername ? `<small>(@${siteUsername})</small>` : ''}<br/>
           <a href="${reportedUrl}" target="_blank" class="url-box" style="color:var(--primary); font-size:0.8rem; font-weight:600;">
             ${reportedUrl}
           </a><br/>
@@ -1169,6 +1166,7 @@ async function renderAdminDashboard() {
         </td>
         <td>
           <div style="display:flex; gap:4px; flex-wrap:wrap;">
+            <a href="${reportedUrl}" target="_blank" class="btn btn-sm btn-secondary">Cek URL</a>
             <button class="btn btn-sm btn-danger btnReportSuspend" data-siteid="${r.websiteId}" data-sitename="${r.siteName || ''}" data-repid="${repId}">
               ⛔ Suspend Site
             </button>
@@ -1293,7 +1291,7 @@ async function renderAdminDashboard() {
     </div>
   `;
 
-  // === LISTENERS LAPORAN ===
+  // Listeners Reports
   document.querySelectorAll('.btnReportSuspend').forEach(btn => {
     btn.onclick = (e) => {
       const siteId = e.target.dataset.siteid;
@@ -1354,7 +1352,7 @@ async function renderAdminDashboard() {
     };
   });
 
-  // User & Website Actions
+  // User Management
   document.querySelectorAll('.btnSuspendUser').forEach(btn => {
     btn.onclick = (e) => {
       const uid = e.target.dataset.id;
@@ -1402,6 +1400,7 @@ async function renderAdminDashboard() {
     };
   });
 
+  // Website Actions
   document.querySelectorAll('.btnDirectPublish').forEach(btn => {
     btn.onclick = (e) => {
       const siteId = e.target.dataset.id;
@@ -1578,7 +1577,6 @@ async function renderPublicLandingPage(username) {
 
     const siteDoc = snap.docs[0];
     const site = siteDoc.data();
-    const targetUrl = window.location.href;
 
     document.title = site.siteName || "Official Website";
     
@@ -1605,6 +1603,7 @@ async function renderPublicLandingPage(username) {
 
     root.innerHTML = `
       <div class="landing-page">
+        <!-- Hero Section -->
         <header class="lp-hero">
           <div class="lp-hero-with-img">
             ${site.hero?.imageUrl ? `<img src="${site.hero.imageUrl}" class="lp-hero-img" alt="${site.siteName}" />` : ''}
@@ -1621,6 +1620,7 @@ async function renderPublicLandingPage(username) {
           </div>
         </header>
 
+        <!-- Tentang Kami -->
         ${site.about?.content ? `
           <section class="lp-section">
             <h2 class="lp-section-title">${site.about.title || 'Tentang Kami'}</h2>
@@ -1630,6 +1630,7 @@ async function renderPublicLandingPage(username) {
           </section>
         ` : ''}
 
+        <!-- Layanan -->
         ${site.services?.length ? `
           <section class="lp-section">
             <h2 class="lp-section-title">Layanan & Keunggulan</h2>
@@ -1645,6 +1646,7 @@ async function renderPublicLandingPage(username) {
           </section>
         ` : ''}
 
+        <!-- Produk -->
         ${site.products?.length ? `
           <section class="lp-section">
             <h2 class="lp-section-title">Pilihan Produk & Paket</h2>
@@ -1668,6 +1670,7 @@ async function renderPublicLandingPage(username) {
           </section>
         ` : ''}
 
+        <!-- FAQ -->
         ${site.faqs?.length ? `
           <section class="lp-section">
             <h2 class="lp-section-title">Pertanyaan yang Sering Diajukan (FAQ)</h2>
@@ -1683,6 +1686,7 @@ async function renderPublicLandingPage(username) {
           </section>
         ` : ''}
 
+        <!-- Testimoni -->
         ${site.testimonials?.length ? `
           <section class="lp-section">
             <h2 class="lp-section-title">Ulasan Pelanggan</h2>
@@ -1698,6 +1702,7 @@ async function renderPublicLandingPage(username) {
           </section>
         ` : ''}
 
+        <!-- Kontak & Alamat -->
         <section class="lp-section" style="text-align:center; background:#fafafa;">
           <h2 class="lp-section-title">Hubungi Kami</h2>
           <p style="margin-top:0.5rem; color:#475569;">${site.contact?.address || 'Alamat operasional belum dicantumkan.'}</p>
@@ -1710,6 +1715,7 @@ async function renderPublicLandingPage(username) {
           ` : ''}
         </section>
 
+        <!-- Minimal Report Bar -->
         <div class="lp-report-bar">
           <span>&copy; ${new Date().getFullYear()} ${site.siteName}</span> &bull; 
           <a href="javascript:void(0)" id="btnReport" style="color:var(--text-muted); text-decoration:underline;">Laporkan Halaman</a>
@@ -1718,7 +1724,7 @@ async function renderPublicLandingPage(username) {
     `;
 
     document.getElementById('btnReport')?.addEventListener('click', () => {
-      showReportModal(siteDoc.id, targetUrl, site.siteName || `@${username}`);
+      showReportModal(siteDoc.id, site.username || username, site.siteName || `@${username}`);
     });
 
   } catch (err) {
