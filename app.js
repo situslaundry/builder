@@ -96,13 +96,14 @@ export function showPrompt(title, message, defaultValue = '', onConfirm, placeho
   };
 }
 
-// Modal Laporan Berbasis Username & Anti-Spam
-export function showReportModal(websiteId, username, siteName) {
-  const fullPublicUrl = `${window.location.origin}${BASE_PATH}/#/site/${username}`;
+// Modal Laporan Target Username & URL Lengkap
+export function showReportModal(websiteId, targetUsername, siteName) {
+  const validUsername = (targetUsername || 'unknown').toLowerCase().trim();
+  const fullPublicUrl = `${window.location.origin}${BASE_PATH}/#/site/${validUsername}`;
 
   const reportedSites = JSON.parse(localStorage.getItem('bandar_reported_urls') || '[]');
-  if (reportedSites.includes(username) || reportedSites.includes(fullPublicUrl)) {
-    showToast('Anda sudah pernah mengirimkan laporan untuk website ini.', 'warning', 4000);
+  if (reportedSites.includes(validUsername) || reportedSites.includes(fullPublicUrl)) {
+    showToast(`Anda sudah pernah mengirimkan laporan untuk website @${validUsername}.`, 'warning', 4000);
     return;
   }
 
@@ -114,7 +115,7 @@ export function showReportModal(websiteId, username, siteName) {
       <div class="modal-title">Laporkan Website</div>
       <div class="modal-body">
         <div style="background:#f1f5f9; padding:0.6rem; border-radius:6px; margin-bottom:1rem; font-size:0.85rem;">
-          <strong>Target Website:</strong> ${siteName} (@${username})<br/>
+          <strong>Target:</strong> ${siteName} (<strong>@${validUsername}</strong>)<br/>
           <strong>Target URL:</strong><br/>
           <span class="url-box" style="color:var(--primary); font-weight:600;">${fullPublicUrl}</span>
         </div>
@@ -156,10 +157,10 @@ export function showReportModal(websiteId, username, siteName) {
     modal.remove();
     try {
       await addDoc(collection(db, 'reports'), {
-        websiteId,
-        username,
+        websiteId: websiteId || '',
+        username: validUsername,
         targetUrl: fullPublicUrl,
-        siteName,
+        siteName: siteName || `@${validUsername}`,
         reason,
         description,
         reporterEmail,
@@ -167,7 +168,7 @@ export function showReportModal(websiteId, username, siteName) {
         createdAt: serverTimestamp()
       });
 
-      reportedSites.push(username);
+      reportedSites.push(validUsername);
       reportedSites.push(fullPublicUrl);
       localStorage.setItem('bandar_reported_urls', JSON.stringify(reportedSites));
 
@@ -294,7 +295,7 @@ const router = async () => {
   }
 
   if (siteMatch) {
-    const targetUsername = siteMatch[1].toLowerCase();
+    const targetUsername = siteMatch[1].toLowerCase().trim();
     renderPublicLandingPage(targetUsername);
     return;
   }
@@ -595,7 +596,6 @@ async function renderDashboard() {
       </div>
     </div>
 
-    <!-- Pilihan Cepat Edit Komponen Modular -->
     <div class="card">
       <h3>Komponen & Layanan Landing Page</h3>
       <p class="help-text" style="margin-bottom:1rem;">Pilih bagian yang ingin diedit secara spesifik:</p>
@@ -1132,7 +1132,7 @@ async function renderAdminDashboard() {
     `;
   });
 
-  // 3. Reports Table (URL Berbasis Username Bebas 404)
+  // 3. Reports Table (URL Berbasis Username & Anti-404)
   let reportsHtml = '';
   let newReportsCount = 0;
   repSnap.forEach(rDoc => {
@@ -1142,7 +1142,7 @@ async function renderAdminDashboard() {
     if (isNew) newReportsCount++;
 
     const dateStr = r.createdAt?.toDate ? r.createdAt.toDate().toLocaleDateString('id-ID') : 'Baru saja';
-    const siteUsername = r.username || r.siteName || '';
+    const siteUsername = (r.username || r.siteName || '').toLowerCase().trim();
     const reportedUrl = r.targetUrl || `${window.location.origin}${BASE_PATH}/#/site/${siteUsername}`;
 
     reportsHtml += `
@@ -1303,13 +1303,15 @@ async function renderAdminDashboard() {
         `Tuliskan alasan penangguhan untuk "${siteName}":`,
         'Terbukti melanggar kebijakan platform berdasarkan laporan publik',
         async (reason) => {
-          await updateDoc(doc(db, 'websites', siteId), {
-            status: 'suspended',
-            published: false,
-            moderationNote: reason,
-            reviewedBy: currentUser.uid,
-            reviewedAt: serverTimestamp()
-          });
+          if (siteId) {
+            await updateDoc(doc(db, 'websites', siteId), {
+              status: 'suspended',
+              published: false,
+              moderationNote: reason,
+              reviewedBy: currentUser.uid,
+              reviewedAt: serverTimestamp()
+            });
+          }
 
           await updateDoc(doc(db, 'reports', repId), {
             status: 'resolved',
@@ -1560,23 +1562,25 @@ async function renderAdminReviews() {
 }
 
 // 6. Public Landing Page View
-async function renderPublicLandingPage(username) {
+async function renderPublicLandingPage(activeUsername) {
   const root = document.getElementById('app');
   document.getElementById('navbar-container').innerHTML = '';
-  root.innerHTML = `<div style="text-align:center; padding:5rem 0;">Memuat landing page @${username}...</div>`;
+  root.innerHTML = `<div style="text-align:center; padding:5rem 0;">Memuat landing page @${activeUsername}...</div>`;
 
   try {
-    const q = query(collection(db, 'websites'), where('username', '==', username));
+    const q = query(collection(db, 'websites'), where('username', '==', activeUsername));
     const snap = await getDocs(q);
 
     if (snap.empty) {
       document.title = "404 - Halaman Tidak Ditemukan";
-      root.innerHTML = `<div class="card" style="text-align:center; margin:3rem auto; max-width:500px;"><h2>404 - Tidak Ditemukan</h2><p>Landing page @${username} tidak terdaftar.</p></div>`;
+      root.innerHTML = `<div class="card" style="text-align:center; margin:3rem auto; max-width:500px;"><h2>404 - Tidak Ditemukan</h2><p>Landing page @${activeUsername} tidak terdaftar.</p></div>`;
       return;
     }
 
     const siteDoc = snap.docs[0];
     const site = siteDoc.data();
+    // Pastikan username definitif tersimpan
+    const finalUsername = (site.username || activeUsername).toLowerCase().trim();
 
     document.title = site.siteName || "Official Website";
     
@@ -1724,7 +1728,8 @@ async function renderPublicLandingPage(username) {
     `;
 
     document.getElementById('btnReport')?.addEventListener('click', () => {
-      showReportModal(siteDoc.id, site.username || username, site.siteName || `@${username}`);
+      // Mengirimkan username secara presisi
+      showReportModal(siteDoc.id, finalUsername, site.siteName || `@${finalUsername}`);
     });
 
   } catch (err) {
