@@ -52,7 +52,7 @@ body { background: var(--bg-main); color: var(--text-main); line-height: 1.6; }
 .help-text { font-size: 0.8rem; color: var(--text-muted); margin-top: 0.25rem; }
 
 /* Buttons */
-.btn { display: inline-flex; align-items: center; justify-content: center; padding: 0.65rem 1.25rem; font-size: 0.95rem; font-weight: 600; border-radius: 6px; border: none; cursor: pointer; text-decoration: none; transition: background 0.2s; }
+.btn { display: inline-flex; align-items: center; justify-content: center; padding: 0.65rem 1.25rem; font-size: 0.95rem; font-weight: 600; border-radius: 6px; border: none; cursor: pointer; text-decoration: none; transition: background 0.2s, transform 0.1s; }
 .btn-primary { background: var(--primary); color: white; }
 .btn-primary:hover { background: var(--primary-hover); }
 .btn-secondary { background: #e2e8f0; color: #334155; }
@@ -61,10 +61,10 @@ body { background: var(--bg-main); color: var(--text-main); line-height: 1.6; }
 .btn-success:hover { background: #15803d; }
 .btn-danger { background: #dc2626; color: white; }
 .btn-danger:hover { background: #b91c1c; }
-.btn-sm { padding: 0.35rem 0.65rem; font-size: 0.8rem; margin: 2px 2px; }
+.btn-sm { padding: 0.45rem 0.75rem; font-size: 0.85rem; }
 .btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
-/* Tab Navigasi Khusus Modular Builder */
+/* Tab Navigasi Modular Builder */
 .builder-tabs {
   display: flex;
   gap: 0.5rem;
@@ -111,9 +111,9 @@ th, td { padding: 0.75rem 0.75rem; text-align: left; border-bottom: 1px solid va
 th { background: #f1f5f9; font-weight: 600; }
 
 /* ========================================================
-   LANDING PAGE & PRODUCT CATALOG (3-COLUMN DESKTOP GRID)
+   LANDING PAGE & PRODUCT CATALOG (3 BARIS X 2 KOLOM DESKTOP)
    ======================================================== */
-.landing-page { max-width: 1000px; margin: 0 auto; background: #ffffff; min-height: 100vh; box-shadow: 0 0 25px rgba(0,0,0,0.06); position: relative; }
+.landing-page { max-width: 960px; margin: 0 auto; background: #ffffff; min-height: 100vh; box-shadow: 0 0 25px rgba(0,0,0,0.06); position: relative; }
 .lp-hero { padding: 4rem 1.5rem; background: linear-gradient(135deg, #eff6ff 0%, #f8fafc 100%); text-align: center; }
 .lp-hero-with-img { display: flex; flex-direction: column; align-items: center; gap: 1.5rem; }
 .lp-hero-img { max-width: 100%; max-height: 380px; border-radius: 12px; object-fit: cover; box-shadow: 0 10px 20px rgba(0,0,0,0.08); }
@@ -123,97 +123,156 @@ th { background: #f1f5f9; font-weight: 600; }
 .lp-section-title { text-align: center; font-size: 1.75rem; font-weight: 700; margin-bottom: 0.5rem; color: #0f172a; }
 .lp-section-sub { text-align: center; font-size: 0.95rem; color: var(--text-muted); margin-bottom: 2rem; }
 
-/* Grid Umum (Layanan & Testimoni) */
 .lp-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1.25rem; }
 .lp-card { border: 1px solid var(--border); border-radius: 10px; padding: 1.25rem; background: #ffffff; text-align: center; }
 
-/* Grid Katalog Produk (Desktop: Tepat 3 Kolom) */
+/* Grid Produk: Desktop 2 Kolom (3 Baris x 2 Kolom untuk 6 Produk) */
 .lp-prod-grid {
   display: grid;
   grid-template-columns: 1fr;
-  gap: 1.25rem;
+  gap: 1.5rem;
+  max-width: 860px;
+  margin: 0 auto;
 }
 
-@media (min-width: 640px) {
+@media (min-width: 768px) {
   .lp-prod-grid {
     grid-template-columns: repeat(2, 1fr);
   }
 }
 
-@media (min-width: 860px) {
-  .lp-prod-grid {
-    grid-template-columns: repeat(3, 1fr);
-  }
-}
-
-/* Card Produk Sejajar */
+/* Card Produk Rapi & Anti-Bertabrakan */
 .lp-prod-card {
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 12px;
   padding: 1.25rem;
   background: #ffffff;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  height: 100%;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+  min-height: 420px;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.03);
   transition: transform 0.2s, box-shadow 0.2s;
 }
 
 .lp-prod-card:hover {
   transform: translateY(-3px);
-  box-shadow: 0 8px 16px rgba(0,0,0,0.06);
+  box-shadow: 0 10px 20px rgba(0,0,0,0.06);
 }
 
-.lp-prod-img { width: 100%; height: 180px; object-fit: cover; border-radius: 6px; margin-bottom: 0.75rem; }
-.lp-prod-img-placeholder { width: 100%; height: 180px; background: #f1f5f9; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 3rem; margin-bottom: 0.75rem; }
-.lp-prod-title { font-size: 1.1rem; font-weight: 700; color: #0f172a; margin-bottom: 0.25rem; }
-.lp-prod-price { font-size: 1.15rem; font-weight: 800; color: var(--primary); margin-bottom: 0.5rem; }
-
-/* Excerpt Clamped 2 Baris Sejajar */
-.lp-prod-excerpt {
-  font-size: 0.875rem;
-  color: var(--text-muted);
+.lp-prod-img-box {
+  width: 100%;
+  height: 200px;
+  border-radius: 8px;
+  overflow: hidden;
   margin-bottom: 1rem;
+  background: #f1f5f9;
+}
+
+.lp-prod-img { 
+  width: 100%; 
+  height: 100%; 
+  object-fit: cover; 
+  display: block; 
+}
+
+.lp-prod-img-placeholder { 
+  width: 100%; 
+  height: 100%; 
+  display: flex; 
+  align-items: center; 
+  justify-content: center; 
+  font-size: 3.5rem; 
+}
+
+.lp-prod-content {
+  flex-grow: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.lp-prod-title { 
+  font-size: 1.15rem; 
+  font-weight: 700; 
+  color: #0f172a; 
+  margin-bottom: 0.35rem; 
+  line-height: 1.3;
+}
+
+.lp-prod-price { 
+  font-size: 1.25rem; 
+  font-weight: 800; 
+  color: var(--primary); 
+  margin-bottom: 0.6rem; 
+}
+
+/* Excerpt 2 Baris Sejajar */
+.lp-prod-excerpt {
+  font-size: 0.9rem;
+  color: var(--text-muted);
+  margin-bottom: 1.25rem;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
-  line-height: 1.4;
-  height: 2.8em; /* Menjamin ketinggian deskripsi sama rata */
+  line-height: 1.45;
+  height: 2.9em;
 }
 
 .lp-prod-actions {
   display: grid;
   grid-template-columns: 1fr 1.3fr;
-  gap: 0.5rem;
+  gap: 0.65rem;
   margin-top: auto;
+  padding-top: 0.5rem;
 }
 
-/* Floating Cart Button */
-.floating-cart-btn {
+/* ========================================================
+   FLOATING CART BUTTON BUNDAR DENGAN BADGE NOTIFIKASI
+   ======================================================== */
+.floating-cart-circle {
   position: fixed;
   bottom: 2rem;
   right: 2rem;
-  z-index: 999;
+  z-index: 9999;
+  width: 60px;
+  height: 60px;
   background: var(--primary);
   color: white;
+  border-radius: 50%;
   border: none;
-  border-radius: 50px;
-  padding: 0.85rem 1.4rem;
-  font-size: 1rem;
-  font-weight: 700;
-  box-shadow: 0 8px 20px rgba(37, 99, 235, 0.4);
+  box-shadow: 0 10px 25px rgba(37, 99, 235, 0.45);
   cursor: pointer;
   display: flex;
   align-items: center;
-  gap: 0.4rem;
+  justify-content: center;
+  font-size: 1.6rem;
   transition: transform 0.2s, background 0.2s;
+  outline: none;
 }
 
-.floating-cart-btn:hover {
+.floating-cart-circle:hover {
   background: var(--primary-hover);
-  transform: scale(1.05);
+  transform: scale(1.1);
+}
+
+.cart-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  background: #dc2626;
+  color: white;
+  font-size: 0.75rem;
+  font-weight: 800;
+  min-width: 22px;
+  height: 22px;
+  border-radius: 11px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 4px;
+  border: 2px solid #ffffff;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.2);
 }
 
 /* Cart Item Rows */
@@ -221,7 +280,7 @@ th { background: #f1f5f9; font-weight: 600; }
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0.6rem 0;
+  padding: 0.75rem 0;
   border-bottom: 1px dashed var(--border);
   font-size: 0.9rem;
 }
@@ -231,7 +290,7 @@ th { background: #f1f5f9; font-weight: 600; }
   align-items: center;
   gap: 0.35rem;
   background: #f1f5f9;
-  padding: 2px 6px;
+  padding: 3px 8px;
   border-radius: 6px;
   margin: 0 0.5rem;
 }
@@ -240,8 +299,8 @@ th { background: #f1f5f9; font-weight: 600; }
   background: white;
   border: 1px solid var(--border);
   border-radius: 4px;
-  width: 24px;
-  height: 24px;
+  width: 26px;
+  height: 26px;
   font-weight: bold;
   cursor: pointer;
   display: flex;
@@ -253,8 +312,9 @@ th { background: #f1f5f9; font-weight: 600; }
   background: none;
   border: none;
   color: #ef4444;
-  font-size: 1.25rem;
+  font-size: 1.35rem;
   cursor: pointer;
+  line-height: 1;
 }
 
 /* FAQ & Testimoni */
@@ -266,7 +326,7 @@ th { background: #f1f5f9; font-weight: 600; }
 .lp-report-bar { padding: 2rem 1rem; text-align: center; font-size: 0.8rem; color: var(--text-muted); background: #f8fafc; }
 
 /* Toast Notification Engine */
-#toast-container { position: fixed; top: 1rem; right: 1rem; z-index: 99999; display: flex; flex-direction: column; gap: 0.5rem; pointer-events: none; max-width: calc(100vw - 2rem); }
+#toast-container { position: fixed; top: 1rem; right: 1rem; z-index: 999999; display: flex; flex-direction: column; gap: 0.5rem; pointer-events: none; max-width: calc(100vw - 2rem); }
 .toast { pointer-events: auto; min-width: 260px; max-width: 400px; padding: 0.75rem 1rem; border-radius: 8px; background: #ffffff; color: #0f172a; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.15); display: flex; align-items: center; justify-content: space-between; border-left: 5px solid #64748b; font-size: 0.875rem; font-weight: 500; animation: toastSlideIn 0.3s forwards; }
 .toast-success { border-left-color: #16a34a; }
 .toast-error { border-left-color: #dc2626; }
@@ -277,7 +337,7 @@ th { background: #f1f5f9; font-weight: 600; }
 
 /* Modal Engine */
 .modal-overlay { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.6); backdrop-filter: blur(2px); display: flex; align-items: center; justify-content: center; z-index: 99998; padding: 1rem; animation: modalFadeIn 0.2s forwards; }
-.modal-card { background: #ffffff; border-radius: 12px; width: 100%; max-width: 440px; padding: 1.5rem; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.2); word-break: break-word; }
+.modal-card { background: #ffffff; border-radius: 12px; width: 100%; max-width: 460px; padding: 1.5rem; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.2); word-break: break-word; }
 .modal-title { font-size: 1.15rem; font-weight: 700; color: #0f172a; margin-bottom: 0.5rem; }
 .modal-body { font-size: 0.9rem; color: #475569; margin-bottom: 1.25rem; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 0.5rem; }
