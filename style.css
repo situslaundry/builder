@@ -51,6 +51,33 @@ body { background: var(--bg-main); color: var(--text-main); line-height: 1.6; }
 .form-control:focus { outline: none; border-color: var(--primary); }
 .help-text { font-size: 0.8rem; color: var(--text-muted); margin-top: 0.25rem; }
 
+/* Password Input with Toggle Eye Button */
+.password-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.password-wrapper .form-control {
+  padding-right: 2.75rem;
+}
+.btn-toggle-password {
+  position: absolute;
+  right: 0.5rem;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0.4rem;
+  font-size: 1.1rem;
+  color: #64748b;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  outline: none;
+}
+.btn-toggle-password:hover {
+  color: var(--primary);
+}
+
 /* Buttons */
 .btn { display: inline-flex; align-items: center; justify-content: center; padding: 0.65rem 1.25rem; font-size: 0.95rem; font-weight: 600; border-radius: 6px; border: none; cursor: pointer; text-decoration: none; transition: background 0.2s, transform 0.1s; }
 .btn-primary { background: var(--primary); color: white; }
