@@ -96,7 +96,7 @@ export function showPrompt(title, message, defaultValue = '', onConfirm, placeho
   };
 }
 
-// Modal Laporan Target Username & URL Lengkap
+// Modal Laporan Target Username & URL
 export function showReportModal(websiteId, targetUsername, siteName) {
   const validUsername = (targetUsername || 'unknown').toLowerCase().trim();
   const fullPublicUrl = `${window.location.origin}${BASE_PATH}/#/site/${validUsername}`;
@@ -237,7 +237,29 @@ async function uploadImageFile(file, path) {
 }
 
 // ========================================================
-// 3. ROUTER & GLOBAL STATE
+// 3. SEO & OPENGRAPH DYNAMIC HELPER
+// ========================================================
+function updateMetaTag(selector, attribute, value) {
+  if (!value) return;
+  let element = document.querySelector(selector);
+  if (element) {
+    element.setAttribute(attribute, value);
+  } else {
+    element = document.createElement('meta');
+    if (selector.includes('property=')) {
+      const prop = selector.match(/property="([^"]+)"/)[1];
+      element.setAttribute('property', prop);
+    } else if (selector.includes('name=')) {
+      const nm = selector.match(/name="([^"]+)"/)[1];
+      element.setAttribute('name', nm);
+    }
+    element.setAttribute(attribute, value);
+    document.head.appendChild(element);
+  }
+}
+
+// ========================================================
+// 4. ROUTER & GLOBAL STATE
 // ========================================================
 const getBasePath = () => {
   const path = window.location.pathname;
@@ -260,6 +282,7 @@ const RESERVED_USERNAMES = [
 let currentUser = null;
 let currentUserProfile = null;
 let currentMathCaptcha = { question: '', answer: 0 };
+let currentSiteCart = []; // Keranjang belanja aktif
 
 function generateMathCaptcha() {
   const isMultiplication = Math.random() > 0.5;
@@ -300,7 +323,12 @@ const router = async () => {
     return;
   }
 
+  // Reset default SEO jika di dashboard
   document.title = "Bandar Builder - Landing Page Engine";
+  updateMetaTag('meta[name="description"]', 'content', 'Platform Pembuat Landing Page Bisnis & UMKM');
+  updateMetaTag('meta[property="og:title"]', 'content', 'Bandar Builder');
+  updateMetaTag('meta[property="og:description"]', 'content', 'Platform Pembuat Landing Page Bisnis & UMKM');
+
   renderNavbar();
 
   if (hash === '#/register') renderRegister();
@@ -596,6 +624,7 @@ async function renderDashboard() {
       </div>
     </div>
 
+    <!-- Pilihan Cepat Edit Komponen Modular -->
     <div class="card">
       <h3>Komponen & Layanan Landing Page</h3>
       <p class="help-text" style="margin-bottom:1rem;">Pilih bagian yang ingin diedit secara spesifik:</p>
@@ -621,7 +650,7 @@ async function renderDashboard() {
           <a href="#/builder?tab=services" class="btn btn-sm btn-secondary" style="margin-top:0.5rem;">Kelola Layanan</a>
         </div>
         <div class="lp-card" style="text-align:left;">
-          <h4>🛍️ Produk (${site.products?.length || 0}/5)</h4>
+          <h4>🛍️ Produk (${site.products?.length || 0}/6)</h4>
           <p class="help-text">${site.products?.length ? '✅ ' + site.products.length + ' Produk' : '⚪ Belum ada produk'}</p>
           <a href="#/builder?tab=products" class="btn btn-sm btn-secondary" style="margin-top:0.5rem;">Kelola Produk</a>
         </div>
@@ -680,7 +709,7 @@ async function renderModularBuilder(activeTab = 'identity') {
     { id: 'hero', label: '🖼️ Hero Banner' },
     { id: 'about', label: '📖 Tentang Kami' },
     { id: 'services', label: '💼 Layanan' },
-    { id: 'products', label: '🛍️ Produk' },
+    { id: 'products', label: '🛍️ Produk (Maks 6)' },
     { id: 'faqs', label: '❓ FAQ' },
     { id: 'testimonials', label: '⭐ Testimoni' },
     { id: 'contact', label: '📞 Kontak' }
@@ -752,7 +781,10 @@ async function renderModularBuilder(activeTab = 'identity') {
   } else if (activeTab === 'products') {
     formBodyHtml = `
       <div style="display:flex; justify-content:space-between; align-items:center;">
-        <h3>Katalog Produk (Maksimal 5 Produk)</h3>
+        <div>
+          <h3>Katalog Produk & Harga</h3>
+          <p class="help-text">Maksimal 6 produk. Tampilan komputer berupa grid 3 kolom sejajar.</p>
+        </div>
         <button type="button" id="btnAddProduct" class="btn btn-sm btn-secondary">+ Tambah Produk</button>
       </div>
       <div id="productContainer" style="margin-top:1rem;"></div>
@@ -777,7 +809,7 @@ async function renderModularBuilder(activeTab = 'identity') {
     formBodyHtml = `
       <h3>Kontak & Pemesanan</h3>
       <div class="form-group" style="margin-top:1rem;">
-        <label>Nomor WhatsApp (Format: 628xxxxxxxxxx)</label>
+        <label>Nomor WhatsApp Bisnis (Format: 628xxxxxxxxxx)</label>
         <input type="text" id="siteWa" class="form-control" value="${site.contact?.whatsapp || ''}" required />
       </div>
       <div class="form-group">
@@ -847,13 +879,20 @@ async function renderModularBuilder(activeTab = 'identity') {
             <button type="button" class="btn btn-sm btn-danger btnDelProd" data-idx="${i}">Hapus</button>
           </div>
           <div class="form-group">
+            <label style="font-size:0.8rem;">Nama Produk</label>
             <input type="text" class="form-control p-name" placeholder="Nama Produk" value="${p.name || ''}" required />
           </div>
           <div class="form-group">
+            <label style="font-size:0.8rem;">Harga (Rp)</label>
             <input type="number" class="form-control p-price" placeholder="Harga (Rp)" value="${p.price || ''}" required />
           </div>
           <div class="form-group">
-            <input type="text" class="form-control p-desc" placeholder="Keterangan singkat" value="${p.description || ''}" />
+            <label style="font-size:0.8rem;">Deskripsi Singkat / Excerpt (Tampil di kartu katalog)</label>
+            <input type="text" class="form-control p-desc" placeholder="Contoh: Deterjen cair aroma lavender kemasan 1 Liter." value="${p.description || ''}" required />
+          </div>
+          <div class="form-group">
+            <label style="font-size:0.8rem;">Deskripsi Lengkap / Detail (Tampil di pop-up modal detail)</label>
+            <textarea class="form-control p-fulldesc" rows="3" placeholder="Tuliskan spesifikasi, keunggulan, komposisi, atau cara pemakaian...">${p.fullDescription || p.description || ''}</textarea>
           </div>
           <div class="form-group" style="background:#f1f5f9; padding:0.75rem; border-radius:6px;">
             <label style="font-size:0.8rem; font-weight:bold;">Foto Produk (Pilihan 1: URL Gambar)</label>
@@ -870,11 +909,11 @@ async function renderModularBuilder(activeTab = 'identity') {
     };
     renderProducts();
     document.getElementById('btnAddProduct').onclick = () => {
-      if (products.length >= 5) {
-        showToast('Paket Free dibatasi maksimal 5 produk.', 'warning');
+      if (products.length >= 6) {
+        showToast('Batas maksimal katalog adalah 6 produk.', 'warning');
         return;
       }
-      products.push({ name: '', price: '', description: '', imageUrl: '' });
+      products.push({ name: '', price: '', description: '', fullDescription: '', imageUrl: '' });
       renderProducts();
     };
   }
@@ -971,6 +1010,7 @@ async function renderModularBuilder(activeTab = 'identity') {
         const pNames = document.querySelectorAll('.p-name');
         const pPrices = document.querySelectorAll('.p-price');
         const pDescs = document.querySelectorAll('.p-desc');
+        const pFullDescs = document.querySelectorAll('.p-fulldesc');
         const pUrls = document.querySelectorAll('.p-url');
         const pFiles = document.querySelectorAll('.p-file');
 
@@ -982,9 +1022,10 @@ async function renderModularBuilder(activeTab = 'identity') {
             pImgUrl = await uploadImageFile(pFiles[i].files[0], `websites/${currentUser.uid}/prod_${i}_${Date.now()}`);
           }
           updatedProducts.push({
-            name: pNames[i].value,
+            name: pNames[i].value.trim(),
             price: Number(pPrices[i].value),
-            description: pDescs[i].value,
+            description: pDescs[i].value.trim(),
+            fullDescription: pFullDescs[i].value.trim() || pDescs[i].value.trim(),
             imageUrl: pImgUrl
           });
         }
@@ -1561,7 +1602,239 @@ async function renderAdminReviews() {
   });
 }
 
-// 6. Public Landing Page View
+// ========================================================
+// 6. PUBLIC LANDING PAGE & CART ENGINE
+// ========================================================
+
+// Modal Detail Produk (Deskripsi Panjang & Foto Besar)
+function showProductDetailModal(product, merchantWa, siteName) {
+  const container = document.getElementById('modal-container');
+  const modal = document.createElement('div');
+  modal.className = 'modal-overlay';
+  modal.innerHTML = `
+    <div class="modal-card" style="max-width: 520px; max-height: 90vh; overflow-y: auto;">
+      ${product.imageUrl ? `<img src="${product.imageUrl}" style="width:100%; max-height:260px; object-fit:cover; border-radius:8px; margin-bottom:1rem;" alt="${product.name}" />` : ''}
+      <h3 style="font-size:1.3rem; margin-bottom:0.35rem;">${product.name}</h3>
+      <div style="font-size:1.25rem; font-weight:800; color:var(--primary); margin-bottom:0.75rem;">
+        Rp ${Number(product.price).toLocaleString('id-ID')}
+      </div>
+      <div style="font-size:0.95rem; color:#334155; line-height:1.6; margin-bottom:1.5rem; white-space:pre-line;">
+        ${product.fullDescription || product.description || 'Tidak ada deskripsi tambahan.'}
+      </div>
+      <div class="modal-actions" style="gap:0.75rem;">
+        <button class="btn btn-secondary btnCloseDetail">Tutup</button>
+        <button class="btn btn-primary btnAddToCartModal">🛒 + Tambah ke Keranjang</button>
+      </div>
+    </div>
+  `;
+  container.appendChild(modal);
+
+  modal.querySelector('.btnCloseDetail').onclick = () => modal.remove();
+  modal.querySelector('.btnAddToCartModal').onclick = () => {
+    addToCart(product);
+    modal.remove();
+  };
+}
+
+// Tambah Produk ke Keranjang
+function addToCart(product) {
+  const existingIndex = currentSiteCart.findIndex(item => item.name === product.name);
+  if (existingIndex > -1) {
+    currentSiteCart[existingIndex].qty += 1;
+  } else {
+    currentSiteCart.push({
+      name: product.name,
+      price: product.price,
+      imageUrl: product.imageUrl || '',
+      qty: 1
+    });
+  }
+  updateFloatingCartUI();
+  showToast(`"${product.name}" berhasil ditambahkan ke keranjang!`, 'success', 2500);
+}
+
+// Update Tombol Melayang Keranjang
+function updateFloatingCartUI() {
+  const cartBtn = document.getElementById('floating-cart-btn');
+  if (!cartBtn) return;
+  const totalCount = currentSiteCart.reduce((sum, item) => sum + item.qty, 0);
+  if (totalCount > 0) {
+    cartBtn.style.display = 'flex';
+    cartBtn.innerHTML = `🛒 Keranjang <span>(${totalCount})</span>`;
+  } else {
+    cartBtn.style.display = 'none';
+  }
+}
+
+// Modal Checkout Keranjang Belanja
+function showCartCheckoutModal(merchantWa, siteName) {
+  if (currentSiteCart.length === 0) {
+    showToast('Keranjang belanja Anda masih kosong.', 'info');
+    return;
+  }
+
+  const container = document.getElementById('modal-container');
+  const modal = document.createElement('div');
+  modal.className = 'modal-overlay';
+
+  const calculateTotal = () => currentSiteCart.reduce((sum, item) => sum + (item.price * item.qty), 0);
+
+  const renderCartItems = () => {
+    const itemsContainer = modal.querySelector('.cart-items-list');
+    itemsContainer.innerHTML = currentSiteCart.map((item, idx) => `
+      <div class="cart-item-row">
+        <div style="flex:1;">
+          <strong>${item.name}</strong><br/>
+          <span style="color:var(--primary); font-weight:700;">Rp ${Number(item.price).toLocaleString('id-ID')}</span>
+        </div>
+        <div class="cart-qty-ctrl">
+          <button type="button" class="btn-qty-minus" data-idx="${idx}">−</button>
+          <span style="min-width:24px; text-align:center; font-weight:bold;">${item.qty}</span>
+          <button type="button" class="btn-qty-plus" data-idx="${idx}">+</button>
+        </div>
+        <button type="button" class="btn-remove-item" data-idx="${idx}">&times;</button>
+      </div>
+    `).join('');
+
+    modal.querySelector('.cart-total-amount').innerText = `Rp ${calculateTotal().toLocaleString('id-ID')}`;
+
+    // Listener kuantitas
+    modal.querySelectorAll('.btn-qty-minus').forEach(b => {
+      b.onclick = (e) => {
+        const i = Number(e.target.dataset.idx);
+        if (currentSiteCart[i].qty > 1) {
+          currentSiteCart[i].qty -= 1;
+        } else {
+          currentSiteCart.splice(i, 1);
+        }
+        if (currentSiteCart.length === 0) {
+          modal.remove();
+          updateFloatingCartUI();
+          showToast('Keranjang telah kosong.', 'info');
+        } else {
+          renderCartItems();
+          updateFloatingCartUI();
+        }
+      };
+    });
+
+    modal.querySelectorAll('.btn-qty-plus').forEach(b => {
+      b.onclick = (e) => {
+        const i = Number(e.target.dataset.idx);
+        currentSiteCart[i].qty += 1;
+        renderCartItems();
+        updateFloatingCartUI();
+      };
+    });
+
+    modal.querySelectorAll('.btn-remove-item').forEach(b => {
+      b.onclick = (e) => {
+        const i = Number(e.target.dataset.idx);
+        currentSiteCart.splice(i, 1);
+        if (currentSiteCart.length === 0) {
+          modal.remove();
+          updateFloatingCartUI();
+        } else {
+          renderCartItems();
+          updateFloatingCartUI();
+        }
+      };
+    });
+  };
+
+  modal.innerHTML = `
+    <div class="modal-card" style="max-width: 520px; max-height: 90vh; overflow-y: auto;">
+      <div class="modal-title" style="display:flex; justify-content:space-between; align-items:center;">
+        <span>🛒 Keranjang Belanja</span>
+        <button class="toast-close btnCloseCart" style="font-size:1.4rem;">&times;</button>
+      </div>
+      <div class="modal-body" style="margin-top:0.75rem;">
+        <div class="cart-items-list" style="max-height: 220px; overflow-y:auto; margin-bottom:1rem; border-bottom:1px solid var(--border); padding-bottom:0.5rem;"></div>
+        
+        <div style="display:flex; justify-content:space-between; font-size:1.15rem; font-weight:bold; margin-bottom:1.25rem;">
+          <span>Total Pesanan:</span>
+          <span class="cart-total-amount" style="color:var(--primary);">Rp 0</span>
+        </div>
+
+        <form id="formCheckoutWa">
+          <h4 style="margin-bottom:0.75rem; color:#0f172a;">Informasi Pengiriman (Wajib)</h4>
+          <div class="form-group">
+            <label>Nama Lengkap Pemesan <span style="color:red;">*</span></label>
+            <input type="text" id="custName" class="form-control" placeholder="Nama Anda" required />
+          </div>
+          <div class="form-group">
+            <label>Nomor WhatsApp / HP</label>
+            <input type="tel" id="custPhone" class="form-control" placeholder="08xxxxxxxxxx" />
+          </div>
+          <div class="form-group">
+            <label>Alamat Lengkap Pengiriman <span style="color:red;">*</span></label>
+            <textarea id="custAddress" class="form-control" rows="2" placeholder="Nama jalan, nomor rumah, RT/RW, kelurahan, kecamatan, kota..." required></textarea>
+          </div>
+          <div class="form-group">
+            <label>Catatan Tambahan (Opsional)</label>
+            <input type="text" id="custNotes" class="form-control" placeholder="Contoh: Titip di satpam / varian wangi" />
+          </div>
+          
+          <button type="submit" class="btn btn-success" style="width:100%; font-size:1.05rem; padding:0.85rem; margin-top:0.5rem;">
+            💬 Kirim Pesanan via WhatsApp
+          </button>
+        </form>
+      </div>
+    </div>
+  `;
+
+  container.appendChild(modal);
+  renderCartItems();
+
+  modal.querySelector('.btnCloseCart').onclick = () => modal.remove();
+
+  modal.querySelector('#formCheckoutWa').onsubmit = (e) => {
+    e.preventDefault();
+    const custName = modal.querySelector('#custName').value.trim();
+    const custPhone = modal.querySelector('#custPhone').value.trim() || '-';
+    const custAddress = modal.querySelector('#custAddress').value.trim();
+    const custNotes = modal.querySelector('#custNotes').value.trim() || '-';
+
+    if (!custName || !custAddress) {
+      showToast('Harap lengkapi Nama dan Alamat pengiriman!', 'warning');
+      return;
+    }
+
+    const total = calculateTotal();
+    
+    // Susun Format Pesan WhatsApp
+    let orderListText = currentSiteCart.map((item, idx) => 
+      `${idx + 1}. *${item.name}* (x${item.qty}) = Rp ${(item.price * item.qty).toLocaleString('id-ID')}`
+    ).join('\n');
+
+    let waMessage = `*PESANAN BARU DARI WEBSITE: ${siteName.toUpperCase()}*\n` +
+      `----------------------------------------\n` +
+      `*DATA PEMESAN:*\n` +
+      `👤 *Nama:* ${custName}\n` +
+      `📞 *No. HP/WA:* ${custPhone}\n` +
+      `📍 *Alamat:* ${custAddress}\n` +
+      `📝 *Catatan:* ${custNotes}\n` +
+      `----------------------------------------\n` +
+      `*RINCIAN ITEM:*\n${orderListText}\n` +
+      `----------------------------------------\n` +
+      `💰 *TOTAL PEMBAYARAN:* *Rp ${total.toLocaleString('id-ID')}*\n` +
+      `----------------------------------------\n` +
+      `Halo ${siteName}, saya telah mengirimkan rincian pesanan di atas. Mohon segera diproses ya, terima kasih!`;
+
+    const targetWaNumber = merchantWa.replace(/[^0-9]/g, '');
+    const waUrl = `https://wa.me/${targetWaNumber}?text=${encodeURIComponent(waMessage)}`;
+
+    modal.remove();
+    // Kosongkan keranjang & refresh UI
+    currentSiteCart = [];
+    updateFloatingCartUI();
+
+    showToast('Pesanan berhasil dibuat! Anda diarahkan ke WhatsApp...', 'success', 3000);
+    window.open(waUrl, '_blank');
+  };
+}
+
+// Render Public Landing Page
 async function renderPublicLandingPage(activeUsername) {
   const root = document.getElementById('app');
   document.getElementById('navbar-container').innerHTML = '';
@@ -1579,18 +1852,23 @@ async function renderPublicLandingPage(activeUsername) {
 
     const siteDoc = snap.docs[0];
     const site = siteDoc.data();
-    // Pastikan username definitif tersimpan
     const finalUsername = (site.username || activeUsername).toLowerCase().trim();
 
-    document.title = site.siteName || "Official Website";
-    
-    const metaDesc = site.description || `Website resmi ${site.siteName}`;
+    // 1. UPDATE DYNAMIC SEO & OPENGRAPH META TAGS
+    const fullTitle = `${site.siteName || 'Official Website'}`;
+    const fullDesc = site.description || `Website resmi ${site.siteName}`;
     const shareImage = site.hero?.imageUrl || (site.products?.[0]?.imageUrl || '');
+    const currentUrl = `${window.location.origin}${BASE_PATH}/#/site/${finalUsername}`;
 
-    document.getElementById('meta-desc')?.setAttribute('content', metaDesc);
-    document.getElementById('og-title')?.setAttribute('content', site.siteName);
-    document.getElementById('og-desc')?.setAttribute('content', metaDesc);
-    document.getElementById('og-image')?.setAttribute('content', shareImage);
+    document.title = fullTitle;
+    updateMetaTag('meta[name="description"]', 'content', fullDesc);
+    updateMetaTag('meta[property="og:title"]', 'content', fullTitle);
+    updateMetaTag('meta[property="og:description"]', 'content', fullDesc);
+    updateMetaTag('meta[property="og:image"]', 'content', shareImage);
+    updateMetaTag('meta[property="og:url"]', 'content', currentUrl);
+    updateMetaTag('meta[name="twitter:title"]', 'content', fullTitle);
+    updateMetaTag('meta[name="twitter:description"]', 'content', fullDesc);
+    updateMetaTag('meta[name="twitter:image"]', 'content', shareImage);
 
     if (site.status === 'suspended') {
       root.innerHTML = `<div class="card" style="text-align:center; margin:3rem auto; max-width:500px; color:#991b1b;"><h2>Website Ditangguhkan</h2><p>Landing page ini tidak dapat diakses karena pelanggaran aturan platform.</p></div>`;
@@ -1605,8 +1883,16 @@ async function renderPublicLandingPage(activeUsername) {
       return;
     }
 
+    // Ambil maksimal 6 produk
+    const productList = (site.products || []).slice(0, 6);
+
     root.innerHTML = `
       <div class="landing-page">
+        <!-- Floating Cart Button -->
+        <button id="floating-cart-btn" class="floating-cart-btn" style="display:none;">
+          🛒 Keranjang (0)
+        </button>
+
         <!-- Hero Section -->
         <header class="lp-hero">
           <div class="lp-hero-with-img">
@@ -1650,24 +1936,28 @@ async function renderPublicLandingPage(activeUsername) {
           </section>
         ` : ''}
 
-        <!-- Produk -->
-        ${site.products?.length ? `
+        <!-- Katalog Produk (Maks 6 Item, Grid 3 Desktop, Excerpt Sejajar, Cart System) -->
+        ${productList.length ? `
           <section class="lp-section">
             <h2 class="lp-section-title">Pilihan Produk & Paket</h2>
-            <p class="lp-section-sub">Dapatkan penawaran terbaik</p>
-            <div class="lp-grid">
-              ${site.products.map(p => `
-                <div class="lp-card">
-                  ${p.imageUrl ? `<img src="${p.imageUrl}" class="lp-prod-img" alt="${p.name}" />` : ''}
-                  <h3>${p.name}</h3>
-                  <div class="lp-prod-price">Rp ${Number(p.price).toLocaleString('id-ID')}</div>
-                  <p style="color:var(--text-muted); font-size:0.85rem; margin-bottom:1rem;">${p.description || ''}</p>
-                  ${site.contact?.whatsapp ? `
-                    <a href="https://wa.me/${site.contact.whatsapp}?text=Halo%20${encodeURIComponent(site.siteName)},%20saya%20mau%20pesan%20${encodeURIComponent(p.name)}" 
-                       target="_blank" class="btn btn-sm btn-primary" style="width:100%;">
-                       Pesan Sekarang
-                    </a>
-                  ` : ''}
+            <p class="lp-section-sub">Pilih produk dan pesan langsung melalui keranjang belanja</p>
+            <div class="lp-prod-grid">
+              ${productList.map((p, pIdx) => `
+                <div class="lp-prod-card">
+                  <div>
+                    ${p.imageUrl ? `<img src="${p.imageUrl}" class="lp-prod-img" alt="${p.name}" />` : '<div class="lp-prod-img-placeholder">🛍️</div>'}
+                    <h3 class="lp-prod-title">${p.name}</h3>
+                    <div class="lp-prod-price">Rp ${Number(p.price).toLocaleString('id-ID')}</div>
+                    <p class="lp-prod-excerpt">${p.description || ''}</p>
+                  </div>
+                  <div class="lp-prod-actions">
+                    <button type="button" class="btn btn-sm btn-secondary btnViewDetail" data-idx="${pIdx}">
+                      🔍 Detail
+                    </button>
+                    <button type="button" class="btn btn-sm btn-primary btnAddToCart" data-idx="${pIdx}">
+                      🛒 + Keranjang
+                    </button>
+                  </div>
                 </div>
               `).join('')}
             </div>
@@ -1727,10 +2017,37 @@ async function renderPublicLandingPage(activeUsername) {
       </div>
     `;
 
-    document.getElementById('btnReport')?.addEventListener('click', () => {
-      // Mengirimkan username secara presisi
-      showReportModal(siteDoc.id, finalUsername, site.siteName || `@${finalUsername}`);
+    // Pasang Event Listeners E-Commerce
+    const merchantWa = site.contact?.whatsapp || '';
+    const siteName = site.siteName || `@${finalUsername}`;
+
+    // 1. Tombol Detail
+    document.querySelectorAll('.btnViewDetail').forEach(b => {
+      b.onclick = (e) => {
+        const p = productList[Number(e.target.dataset.idx)];
+        showProductDetailModal(p, merchantWa, siteName);
+      };
     });
+
+    // 2. Tombol Tambah ke Keranjang
+    document.querySelectorAll('.btnAddToCart').forEach(b => {
+      b.onclick = (e) => {
+        const p = productList[Number(e.target.dataset.idx)];
+        addToCart(p);
+      };
+    });
+
+    // 3. Tombol Floating Cart
+    document.getElementById('floating-cart-btn')?.addEventListener('click', () => {
+      showCartCheckoutModal(merchantWa, siteName);
+    });
+
+    // 4. Tombol Laporkan
+    document.getElementById('btnReport')?.addEventListener('click', () => {
+      showReportModal(siteDoc.id, finalUsername, siteName);
+    });
+
+    updateFloatingCartUI();
 
   } catch (err) {
     root.innerHTML = `<div class="card">Gagal memuat: ${err.message}</div>`;
