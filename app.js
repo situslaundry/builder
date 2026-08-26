@@ -13,19 +13,13 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-storage.js";
 
 // ========================================================
-// TOAST NOTIFICATION & MODAL ENGINE
+// TOAST & MODAL ENGINE
 // ========================================================
 export function showToast(message, type = 'info', duration = 3500) {
   const container = document.getElementById('toast-container');
   if (!container) return;
 
-  const icons = {
-    success: '✅',
-    error: '❌',
-    warning: '⚠️',
-    info: 'ℹ️'
-  };
-
+  const icons = { success: '✅', error: '❌', warning: '⚠️', info: 'ℹ️' };
   const toast = document.createElement('div');
   toast.className = `toast toast-${type}`;
   toast.innerHTML = `
@@ -37,7 +31,6 @@ export function showToast(message, type = 'info', duration = 3500) {
   `;
 
   container.appendChild(toast);
-
   const removeToast = () => {
     toast.style.animation = 'toastFadeOut 0.3s forwards';
     setTimeout(() => toast.remove(), 300);
@@ -61,7 +54,6 @@ export function showConfirm(title, message, onConfirm, confirmText = 'Ya, Lanjut
       </div>
     </div>
   `;
-
   container.appendChild(modal);
 
   modal.querySelector('.btnCancel').onclick = () => modal.remove();
@@ -88,7 +80,6 @@ export function showPrompt(title, message, defaultValue = '', onConfirm, placeho
       </div>
     </div>
   `;
-
   container.appendChild(modal);
   const input = modal.querySelector('.modal-input');
   input.focus();
@@ -105,15 +96,26 @@ export function showPrompt(title, message, defaultValue = '', onConfirm, placeho
   };
 }
 
-// Modal Khusus Laporan Publik
-export function showReportModal(websiteId, siteName) {
+// Modal Laporan Target URL Lengkap & Anti-Spam
+export function showReportModal(websiteId, targetUrl, siteName) {
+  // Cek apakah perangkat sudah pernah melaporkan URL ini
+  const reportedSites = JSON.parse(localStorage.getItem('bandar_reported_urls') || '[]');
+  if (reportedSites.includes(targetUrl)) {
+    showToast('Anda sudah pernah mengirimkan laporan untuk website ini.', 'warning', 4000);
+    return;
+  }
+
   const container = document.getElementById('modal-container');
   const modal = document.createElement('div');
   modal.className = 'modal-overlay';
   modal.innerHTML = `
     <div class="modal-card">
-      <div class="modal-title">Laporkan Website: ${siteName}</div>
+      <div class="modal-title">Laporkan Website</div>
       <div class="modal-body">
+        <div style="background:#f1f5f9; padding:0.6rem; border-radius:6px; margin-bottom:1rem; font-size:0.85rem;">
+          <strong>Target URL:</strong><br/>
+          <span class="url-box" style="color:var(--primary); font-weight:600;">${targetUrl}</span>
+        </div>
         <div class="form-group">
           <label>Alasan Pelanggaran</label>
           <select class="form-control report-reason">
@@ -153,6 +155,7 @@ export function showReportModal(websiteId, siteName) {
     try {
       await addDoc(collection(db, 'reports'), {
         websiteId,
+        targetUrl,
         siteName,
         reason,
         description,
@@ -160,7 +163,12 @@ export function showReportModal(websiteId, siteName) {
         status: 'new',
         createdAt: serverTimestamp()
       });
-      showToast('Laporan Anda telah berhasil dikirim ke Admin untuk ditinjau.', 'success');
+
+      // Simpan URL di LocalStorage perangkat pelapor
+      reportedSites.push(targetUrl);
+      localStorage.setItem('bandar_reported_urls', JSON.stringify(reportedSites));
+
+      showToast('Laporan telah dikirim ke Admin untuk diperiksa.', 'success');
     } catch (err) {
       showToast('Gagal mengirim laporan: ' + err.message, 'error');
     }
@@ -168,7 +176,67 @@ export function showReportModal(websiteId, siteName) {
 }
 
 // ========================================================
-// ROUTING & APP STATE
+// SMART ULTRA-LIGHT IMAGE COMPRESSOR (~50KB - 90KB, HD Sharpening)
+// ========================================================
+async function compressImageToUltraLight(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = (event) => {
+      const img = new Image();
+      img.src = event.target.result;
+      img.onload = () => {
+        // Pertahankan lebar 1080px (Standar HD tajam untuk komputer & HP)
+        let maxDim = 1080;
+        let width = img.width;
+        let height = img.height;
+
+        if (width > height && width > maxDim) {
+          height = Math.round((height * maxDim) / width);
+          width = maxDim;
+        } else if (height > maxDim) {
+          width = Math.round((width * maxDim) / height);
+          height = maxDim;
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        
+        // Anti-aliasing rendering untuk menjaga ketajaman font & detail produk
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+        ctx.drawImage(img, 0, 0, width, height);
+
+        // Kualitas 0.65 menghasilkan ukuran ~40KB - 80KB dengan visual sangat tajam
+        canvas.toBlob((blob) => {
+          if (blob) resolve(blob);
+          else reject(new Error('Gagal kompres gambar'));
+        }, 'image/jpeg', 0.65);
+      };
+      img.onerror = (err) => reject(err);
+    };
+    reader.onerror = (err) => reject(err);
+  });
+}
+
+async function uploadImageFile(file, path) {
+  if (!file) return null;
+  const compressedBlob = await compressImageToUltraLight(file);
+  const storageRef = ref(storage, path);
+  
+  const uploadPromise = uploadBytes(storageRef, compressedBlob, { contentType: 'image/jpeg' });
+  const timeoutPromise = new Promise((_, reject) => 
+    setTimeout(() => reject(new Error("Unggah gambar timeout. Silakan gunakan opsi URL Gambar.")), 15000)
+  );
+
+  await Promise.race([uploadPromise, timeoutPromise]);
+  return await getDownloadURL(storageRef);
+}
+
+// ========================================================
+// ROUTER & CORE ENGINE
 // ========================================================
 const getBasePath = () => {
   const path = window.location.pathname;
@@ -212,53 +280,6 @@ function generateMathCaptcha() {
   return question;
 }
 
-async function compressImage(file, maxWidth = 1200, quality = 0.8) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.readAsDataURL(file);
-    reader.onload = (event) => {
-      const img = new Image();
-      img.src = event.target.result;
-      img.onload = () => {
-        let width = img.width;
-        let height = img.height;
-
-        if (width > maxWidth) {
-          height = Math.round((height * maxWidth) / width);
-          width = maxWidth;
-        }
-
-        const canvas = document.createElement('canvas');
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(img, 0, 0, width, height);
-
-        canvas.toBlob((blob) => {
-          if (blob) resolve(blob);
-          else reject(new Error('Gagal mengompres gambar'));
-        }, 'image/jpeg', quality);
-      };
-      img.onerror = (err) => reject(err);
-    };
-    reader.onerror = (err) => reject(err);
-  });
-}
-
-async function uploadImageFile(file, path) {
-  if (!file) return null;
-  const compressedBlob = await compressImage(file);
-  const storageRef = ref(storage, path);
-  
-  const uploadPromise = uploadBytes(storageRef, compressedBlob, { contentType: 'image/jpeg' });
-  const timeoutPromise = new Promise((_, reject) => 
-    setTimeout(() => reject(new Error("Unggah gambar timeout. Silakan gunakan opsi URL Gambar.")), 15000)
-  );
-
-  await Promise.race([uploadPromise, timeoutPromise]);
-  return await getDownloadURL(storageRef);
-}
-
 const router = async () => {
   const path = window.location.pathname;
   const hash = window.location.hash || '';
@@ -285,7 +306,12 @@ const router = async () => {
   else if (hash === '#/login') renderLogin();
   else if (hash === '#/admin') requireAdmin(renderAdminDashboard);
   else if (hash === '#/admin/reviews') requireAdmin(renderAdminReviews);
-  else if (hash === '#/builder') requireAuth(renderBuilder);
+  else if (hash.startsWith('#/builder')) requireAuth(() => {
+    // Tangkap section tab dari hash: #/builder?tab=hero
+    const urlParams = new URLSearchParams(hash.split('?')[1] || '');
+    const activeSection = urlParams.get('tab') || 'identity';
+    renderModularBuilder(activeSection);
+  });
   else renderDashboard();
 };
 
@@ -312,7 +338,7 @@ const navigate = (path) => { window.location.hash = path; };
 const requireAuth = (callback) => {
   if (!currentUser) return navigate('#/login');
   if (currentUserProfile?.status === 'suspended' || currentUserProfile?.status === 'banned') {
-    document.getElementById('app').innerHTML = `<div class="card"><h2>Akun Ditangguhkan</h2><p>Akun Anda dinonaktifkan oleh administrator.</p></div>`;
+    document.getElementById('app').innerHTML = `<div class="card"><h2>Akun Ditangguhkan</h2><p>Akun dinonaktifkan oleh administrator.</p></div>`;
     return;
   }
   callback();
@@ -358,12 +384,12 @@ function renderNavbar() {
 
   document.getElementById('btnLogout')?.addEventListener('click', async () => {
     await signOut(auth);
-    showToast('Berhasil keluar dari akun.', 'info');
+    showToast('Berhasil keluar.', 'info');
     navigate('#/login');
   });
 }
 
-// 1. Registrasi (Dengan Math Captcha & Toast)
+// 1. Registrasi
 function renderRegister() {
   const app = document.getElementById('app');
   const mathQuestion = generateMathCaptcha();
@@ -412,13 +438,13 @@ function renderRegister() {
     const captchaInput = Number(document.getElementById('regCaptcha').value.trim());
 
     if (captchaInput !== currentMathCaptcha.answer) {
-      showToast('Jawaban verifikasi keamanan salah! Silakan hitung kembali.', 'error');
+      showToast('Jawaban verifikasi keamanan salah!', 'error');
       renderRegister();
       return;
     }
 
     if (!/^[a-z0-9-]{3,30}$/.test(username)) {
-      showToast('Username harus 3-30 karakter (huruf kecil, angka, dan -).', 'warning');
+      showToast('Username harus 3-30 karakter.', 'warning');
       return;
     }
     if (RESERVED_USERNAMES.includes(username)) {
@@ -429,7 +455,7 @@ function renderRegister() {
     try {
       const uDoc = await getDoc(doc(db, 'usernames', username));
       if (uDoc.exists()) {
-        showToast('Username sudah terpakai oleh pengguna lain.', 'warning');
+        showToast('Username sudah terpakai.', 'warning');
         return;
       }
 
@@ -471,7 +497,7 @@ function renderRegister() {
         updatedAt: serverTimestamp()
       });
 
-      showToast('Akun berhasil terdaftar! Selamat datang.', 'success');
+      showToast('Akun berhasil terdaftar!', 'success');
       window.location.hash = '#/dashboard';
     } catch (err) {
       showToast('Registrasi gagal: ' + err.message, 'error');
@@ -540,7 +566,10 @@ async function renderDashboard() {
       <div style="margin-top: 1rem;">
         <p><strong>Website:</strong> ${site.siteName || '-'}</p>
         <p><strong>Username:</strong> @${username}</p>
-        <p><strong>URL Landing Page:</strong> <a href="${publicRelativeUrl}" target="_blank">${fullDisplayUrl}</a></p>
+        <p>
+          <strong>URL Landing Page:</strong><br/>
+          <a href="${publicRelativeUrl}" target="_blank" class="url-box" style="color:var(--primary); font-weight:600;">${fullDisplayUrl}</a>
+        </p>
         <p><strong>Paket:</strong> <span class="badge" style="background:#0284c7;">${site.plan?.toUpperCase() || 'FREE'}</span></p>
         <p><strong>Status:</strong> <span class="badge badge-${site.status}">${site.status?.replace('_', ' ').toUpperCase()}</span></p>
         
@@ -551,13 +580,13 @@ async function renderDashboard() {
         ` : ''}
         ${site.status === 'suspended' ? `
           <div style="margin-top:1rem; padding:0.75rem; background:#fee2e2; border:1px solid #f87171; border-radius:6px; color:#991b1b;">
-            <strong>Website Anda Disuspend oleh Admin:</strong> ${site.moderationNote || 'Melanggar kebijakan platform.'}
+            <strong>Website Disuspend oleh Admin:</strong> ${site.moderationNote || 'Melanggar kebijakan platform.'}
           </div>
         ` : ''}
       </div>
 
       <div style="margin-top: 1.5rem; display: flex; gap: 0.5rem; flex-wrap: wrap;">
-        <a href="#/builder" class="btn btn-primary">Edit Landing Page</a>
+        <a href="#/builder?tab=identity" class="btn btn-primary">Edit Website</a>
         <button id="btnSubmitReview" class="btn btn-secondary" ${['pending_review', 'approved', 'published'].includes(site.status) ? 'disabled' : ''}>
           ${site.status === 'pending_review' ? 'Menunggu Review Admin' : 'Ajukan Review'}
         </button>
@@ -569,36 +598,47 @@ async function renderDashboard() {
 
     <div class="card">
       <h3>Komponen & Layanan Landing Page</h3>
-      <div class="lp-grid" style="margin-top:1rem;">
+      <p class="help-text" style="margin-bottom:1rem;">Pilih bagian yang ingin diedit secara spesifik:</p>
+      <div class="lp-grid">
+        <div class="lp-card" style="text-align:left;">
+          <h4>🏷️ Identitas & SEO</h4>
+          <p class="help-text">${site.siteName || '-'}</p>
+          <a href="#/builder?tab=identity" class="btn btn-sm btn-secondary" style="margin-top:0.5rem;">Edit Identitas</a>
+        </div>
         <div class="lp-card" style="text-align:left;">
           <h4>🖼️ Hero Banner</h4>
-          <p class="help-text">Status: ${site.hero?.imageUrl ? '✅ Gambar Terpasang' : '⚪ Polos Tanpa Gambar (Opsional)'}</p>
-          <a href="#/builder" class="btn btn-sm btn-secondary" style="margin-top:0.5rem;">Edit Hero</a>
+          <p class="help-text">${site.hero?.imageUrl ? '✅ Gambar Terpasang' : '⚪ Polos Tanpa Gambar'}</p>
+          <a href="#/builder?tab=hero" class="btn btn-sm btn-secondary" style="margin-top:0.5rem;">Edit Hero Banner</a>
+        </div>
+        <div class="lp-card" style="text-align:left;">
+          <h4>📖 Tentang Kami</h4>
+          <p class="help-text">${site.about?.content ? '✅ Profil Terisi' : '⚪ Belum ada isi'}</p>
+          <a href="#/builder?tab=about" class="btn btn-sm btn-secondary" style="margin-top:0.5rem;">Edit Tentang Kami</a>
         </div>
         <div class="lp-card" style="text-align:left;">
           <h4>💼 Layanan (${site.services?.length || 0})</h4>
-          <p class="help-text">${site.services?.length ? '✅ ' + site.services.length + ' Layanan aktif' : '⚪ Belum ada layanan'}</p>
-          <a href="#/builder" class="btn btn-sm btn-secondary" style="margin-top:0.5rem;">Kelola Layanan</a>
+          <p class="help-text">${site.services?.length ? '✅ ' + site.services.length + ' Layanan' : '⚪ Belum ada layanan'}</p>
+          <a href="#/builder?tab=services" class="btn btn-sm btn-secondary" style="margin-top:0.5rem;">Kelola Layanan</a>
         </div>
         <div class="lp-card" style="text-align:left;">
           <h4>🛍️ Produk (${site.products?.length || 0}/5)</h4>
           <p class="help-text">${site.products?.length ? '✅ ' + site.products.length + ' Produk' : '⚪ Belum ada produk'}</p>
-          <a href="#/builder" class="btn btn-sm btn-secondary" style="margin-top:0.5rem;">Kelola Produk</a>
+          <a href="#/builder?tab=products" class="btn btn-sm btn-secondary" style="margin-top:0.5rem;">Kelola Produk</a>
         </div>
         <div class="lp-card" style="text-align:left;">
           <h4>❓ FAQ (${site.faqs?.length || 0})</h4>
           <p class="help-text">${site.faqs?.length ? '✅ ' + site.faqs.length + ' Tanya Jawab' : '⚪ Belum ada FAQ'}</p>
-          <a href="#/builder" class="btn btn-sm btn-secondary" style="margin-top:0.5rem;">Kelola FAQ</a>
+          <a href="#/builder?tab=faqs" class="btn btn-sm btn-secondary" style="margin-top:0.5rem;">Kelola FAQ</a>
         </div>
         <div class="lp-card" style="text-align:left;">
           <h4>⭐ Testimoni (${site.testimonials?.length || 0})</h4>
           <p class="help-text">${site.testimonials?.length ? '✅ ' + site.testimonials.length + ' Testimoni' : '⚪ Belum ada ulasan'}</p>
-          <a href="#/builder" class="btn btn-sm btn-secondary" style="margin-top:0.5rem;">Kelola Testimoni</a>
+          <a href="#/builder?tab=testimonials" class="btn btn-sm btn-secondary" style="margin-top:0.5rem;">Kelola Testimoni</a>
         </div>
         <div class="lp-card" style="text-align:left;">
           <h4>📞 Kontak & WhatsApp</h4>
           <p class="help-text">${site.contact?.whatsapp ? '✅ +' + site.contact.whatsapp : '⚪ Belum diatur'}</p>
-          <a href="#/builder" class="btn btn-sm btn-secondary" style="margin-top:0.5rem;">Edit Kontak</a>
+          <a href="#/builder?tab=contact" class="btn btn-sm btn-secondary" style="margin-top:0.5rem;">Edit Kontak</a>
         </div>
       </div>
     </div>
@@ -621,10 +661,10 @@ async function renderDashboard() {
   });
 }
 
-// 4. Section Builder
-async function renderBuilder() {
+// 4. MODULAR SECTION BUILDER (Hanya Menampilkan Bagian yang Dipilih)
+async function renderModularBuilder(activeTab = 'identity') {
   const app = document.getElementById('app');
-  app.innerHTML = `<div class="card"><p>Memuat data builder...</p></div>`;
+  app.innerHTML = `<div class="card"><p>Memuat editor...</p></div>`;
 
   const siteDoc = await getDoc(doc(db, 'websites', currentUser.uid));
   const site = siteDoc.data() || {};
@@ -635,318 +675,360 @@ async function renderBuilder() {
   let faqs = site.faqs || [];
   let testimonials = site.testimonials || [];
 
+  const tabList = [
+    { id: 'identity', label: '🏷️ Identitas' },
+    { id: 'hero', label: '🖼️ Hero Banner' },
+    { id: 'about', label: '📖 Tentang Kami' },
+    { id: 'services', label: '💼 Layanan' },
+    { id: 'products', label: '🛍️ Produk' },
+    { id: 'faqs', label: '❓ FAQ' },
+    { id: 'testimonials', label: '⭐ Testimoni' },
+    { id: 'contact', label: '📞 Kontak' }
+  ];
+
+  const tabsHtml = `
+    <div class="builder-tabs">
+      ${tabList.map(t => `
+        <button type="button" class="builder-tab-btn ${t.id === activeTab ? 'active' : ''}" data-tab="${t.id}">
+          ${t.label}
+        </button>
+      `).join('')}
+    </div>
+  `;
+
+  // Formulir Spesifik Berdasarkan Tab Aktif
+  let formBodyHtml = '';
+
+  if (activeTab === 'identity') {
+    formBodyHtml = `
+      <h3>Identitas Bisnis & SEO</h3>
+      <div class="form-group" style="margin-top:1rem;">
+        <label>Nama Bisnis / Brand (Title Website)</label>
+        <input type="text" id="siteName" class="form-control" value="${site.siteName || ''}" required />
+      </div>
+      <div class="form-group">
+        <label>Deskripsi Bisnis (SEO & OpenGraph)</label>
+        <textarea id="siteDesc" class="form-control" rows="3" required>${site.description || ''}</textarea>
+      </div>
+    `;
+  } else if (activeTab === 'hero') {
+    formBodyHtml = `
+      <h3>Hero Section (Banner Utama)</h3>
+      <div class="form-group" style="margin-top:1rem;">
+        <label>Judul Hero Banner</label>
+        <input type="text" id="heroTitle" class="form-control" value="${site.hero?.title || ''}" required />
+      </div>
+      <div class="form-group">
+        <label>Subjudul Hero</label>
+        <input type="text" id="heroSubtitle" class="form-control" value="${site.hero?.subtitle || ''}" />
+      </div>
+      <div class="form-group" style="background:#f8fafc; padding:1rem; border-radius:6px; border:1px solid var(--border);">
+        <label><strong>Gambar Hero Banner (Opsional / Ringan ~50KB)</strong></label>
+        <p class="help-text" style="margin-bottom:0.5rem;">Pilihan 1: Masukkan link URL langsung</p>
+        <input type="url" id="heroImageUrl" class="form-control" placeholder="https://contoh.com/gambar-hero.jpg" value="${site.hero?.imageUrl || ''}" />
+        <p class="help-text" style="margin-top:0.75rem; margin-bottom:0.25rem;">Pilihan 2: Upload file (Auto-Compress Ringan)</p>
+        <input type="file" id="heroImageFile" class="form-control" accept="image/*" />
+      </div>
+    `;
+  } else if (activeTab === 'about') {
+    formBodyHtml = `
+      <h3>Tentang Kami</h3>
+      <div class="form-group" style="margin-top:1rem;">
+        <label>Judul Section</label>
+        <input type="text" id="aboutTitle" class="form-control" value="${site.about?.title || 'Tentang Kami'}" />
+      </div>
+      <div class="form-group">
+        <label>Konten Profil / Cerita Bisnis</label>
+        <textarea id="aboutContent" class="form-control" rows="5">${site.about?.content || ''}</textarea>
+      </div>
+    `;
+  } else if (activeTab === 'services') {
+    formBodyHtml = `
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <h3>Kelola Layanan & Keunggulan</h3>
+        <button type="button" id="btnAddService" class="btn btn-sm btn-secondary">+ Tambah</button>
+      </div>
+      <div id="serviceContainer" style="margin-top:1rem;"></div>
+    `;
+  } else if (activeTab === 'products') {
+    formBodyHtml = `
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <h3>Katalog Produk (Maksimal 5 Produk)</h3>
+        <button type="button" id="btnAddProduct" class="btn btn-sm btn-secondary">+ Tambah Produk</button>
+      </div>
+      <div id="productContainer" style="margin-top:1rem;"></div>
+    `;
+  } else if (activeTab === 'faqs') {
+    formBodyHtml = `
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <h3>Pertanyaan yang Sering Diajukan (FAQ)</h3>
+        <button type="button" id="btnAddFaq" class="btn btn-sm btn-secondary">+ Tambah FAQ</button>
+      </div>
+      <div id="faqContainer" style="margin-top:1rem;"></div>
+    `;
+  } else if (activeTab === 'testimonials') {
+    formBodyHtml = `
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <h3>Testimoni Pelanggan</h3>
+        <button type="button" id="btnAddTesti" class="btn btn-sm btn-secondary">+ Tambah Testimoni</button>
+      </div>
+      <div id="testiContainer" style="margin-top:1rem;"></div>
+    `;
+  } else if (activeTab === 'contact') {
+    formBodyHtml = `
+      <h3>Kontak & Pemesanan</h3>
+      <div class="form-group" style="margin-top:1rem;">
+        <label>Nomor WhatsApp (Format: 628xxxxxxxxxx)</label>
+        <input type="text" id="siteWa" class="form-control" value="${site.contact?.whatsapp || ''}" required />
+      </div>
+      <div class="form-group">
+        <label>Alamat / Lokasi Operasional</label>
+        <input type="text" id="siteAddress" class="form-control" value="${site.contact?.address || ''}" />
+      </div>
+    `;
+  }
+
   app.innerHTML = `
     <div class="card">
-      <div style="display:flex; justify-content:space-between; align-items:center;">
-        <h2>${isAdmin ? 'Edit Website Demo Platform' : 'Landing Page Builder'}</h2>
-        <a href="#/dashboard" class="btn btn-sm btn-secondary">Kembali ke Dashboard</a>
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
+        <h2>${isAdmin ? 'Edit Website Demo' : 'Editor Landing Page'}</h2>
+        <a href="#/dashboard" class="btn btn-sm btn-secondary">Dashboard</a>
       </div>
 
-      ${isAdmin ? `
-        <div style="margin-top:0.75rem; padding:0.6rem 0.85rem; background:#eff6ff; border:1px solid #bfdbfe; border-radius:6px; color:#1e40af; font-size:0.875rem;">
-          💡 <strong>Mode Admin:</strong> Website ini berfungsi sebagai <strong>Demo Resmi Platform</strong> untuk contoh pengguna lain.
-        </div>
-      ` : ''}
+      ${tabsHtml}
       
-      <form id="formBuilder" style="margin-top:1.5rem;">
-        <h3>1. Identitas Bisnis & SEO</h3>
-        <div class="form-group">
-          <label>Nama Bisnis / Brand (Menjadi Title Website)</label>
-          <input type="text" id="siteName" class="form-control" value="${site.siteName || ''}" required />
-        </div>
-        <div class="form-group">
-          <label>Deskripsi Bisnis (SEO & OpenGraph)</label>
-          <textarea id="siteDesc" class="form-control" rows="2" required>${site.description || ''}</textarea>
-        </div>
-
-        <hr style="margin: 2rem 0; border: none; border-top: 1px solid var(--border);" />
-
-        <h3>2. Hero Section</h3>
-        <div class="form-group">
-          <label>Judul Hero Banner</label>
-          <input type="text" id="heroTitle" class="form-control" value="${site.hero?.title || ''}" required />
-        </div>
-        <div class="form-group">
-          <label>Subjudul Hero</label>
-          <input type="text" id="heroSubtitle" class="form-control" value="${site.hero?.subtitle || ''}" />
-        </div>
-        
-        <div class="form-group" style="background:#f8fafc; padding:1rem; border-radius:6px; border:1px solid var(--border);">
-          <label><strong>Gambar Hero Banner (Opsional / Tidak Wajib)</strong></label>
-          <p class="help-text" style="margin-bottom:0.5rem;">Pilihan 1: Masukkan link URL langsung</p>
-          <input type="url" id="heroImageUrl" class="form-control" placeholder="https://contoh.com/gambar-hero.jpg" value="${site.hero?.imageUrl || ''}" />
-          
-          <p class="help-text" style="margin-top:0.75rem; margin-bottom:0.25rem;">Pilihan 2: Atau unggah file dari perangkat</p>
-          <input type="file" id="heroImageFile" class="form-control" accept="image/*" />
-        </div>
-
-        <hr style="margin: 2rem 0; border: none; border-top: 1px solid var(--border);" />
-
-        <h3>3. Tentang Kami</h3>
-        <div class="form-group">
-          <label>Judul Section</label>
-          <input type="text" id="aboutTitle" class="form-control" value="${site.about?.title || 'Tentang Kami'}" />
-        </div>
-        <div class="form-group">
-          <label>Konten Profil Bisnis</label>
-          <textarea id="aboutContent" class="form-control" rows="3">${site.about?.content || ''}</textarea>
-        </div>
-
-        <hr style="margin: 2rem 0; border: none; border-top: 1px solid var(--border);" />
-
-        <div style="display:flex; justify-content:space-between; align-items:center;">
-          <h3>4. Layanan & Keunggulan</h3>
-          <button type="button" id="btnAddService" class="btn btn-sm btn-secondary">+ Tambah Layanan</button>
-        </div>
-        <div id="serviceContainer" style="margin-top:1rem;"></div>
-
-        <hr style="margin: 2rem 0; border: none; border-top: 1px solid var(--border);" />
-
-        <div style="display:flex; justify-content:space-between; align-items:center;">
-          <h3>5. Produk & Paket (Maks 5 Produk)</h3>
-          <button type="button" id="btnAddProduct" class="btn btn-sm btn-secondary">+ Tambah Produk</button>
-        </div>
-        <div id="productContainer" style="margin-top:1rem;"></div>
-
-        <hr style="margin: 2rem 0; border: none; border-top: 1px solid var(--border);" />
-
-        <div style="display:flex; justify-content:space-between; align-items:center;">
-          <h3>6. FAQ (Tanya Jawab)</h3>
-          <button type="button" id="btnAddFaq" class="btn btn-sm btn-secondary">+ Tambah FAQ</button>
-        </div>
-        <div id="faqContainer" style="margin-top:1rem;"></div>
-
-        <hr style="margin: 2rem 0; border: none; border-top: 1px solid var(--border);" />
-
-        <div style="display:flex; justify-content:space-between; align-items:center;">
-          <h3>7. Testimoni Pelanggan</h3>
-          <button type="button" id="btnAddTesti" class="btn btn-sm btn-secondary">+ Tambah Testimoni</button>
-        </div>
-        <div id="testiContainer" style="margin-top:1rem;"></div>
-
-        <hr style="margin: 2rem 0; border: none; border-top: 1px solid var(--border);" />
-
-        <h3>8. Kontak & Lokasi</h3>
-        <div class="form-group">
-          <label>Nomor WhatsApp (Format: 628xxxxxxxxxx)</label>
-          <input type="text" id="siteWa" class="form-control" value="${site.contact?.whatsapp || ''}" required />
-        </div>
-        <div class="form-group">
-          <label>Alamat / Lokasi Usaha</label>
-          <input type="text" id="siteAddress" class="form-control" value="${site.contact?.address || ''}" />
-        </div>
-
-        <button type="submit" id="btnSaveBuilder" class="btn btn-primary" style="margin-top:1.5rem; width:100%; font-size:1.1rem; padding:0.85rem;">
-          Simpan Seluruh Perubahan
+      <form id="formModularBuilder">
+        ${formBodyHtml}
+        <button type="submit" id="btnSaveBuilder" class="btn btn-primary" style="margin-top:1.5rem; width:100%; font-size:1.05rem; padding:0.8rem;">
+          Simpan Bagian Ini
         </button>
       </form>
     </div>
   `;
 
-  const renderServices = () => {
-    const box = document.getElementById('serviceContainer');
-    box.innerHTML = services.map((s, i) => `
-      <div class="section-item">
-        <div class="section-header">
-          <strong>Layanan #${i + 1}</strong>
-          <button type="button" class="btn btn-sm btn-danger btnDelService" data-idx="${i}">Hapus</button>
-        </div>
-        <input type="text" class="form-control s-title" placeholder="Nama Layanan" value="${s.title || ''}" style="margin-bottom:0.5rem;" required />
-        <input type="text" class="form-control s-desc" placeholder="Keterangan Singkat" value="${s.desc || ''}" />
-      </div>
-    `).join('');
-    document.querySelectorAll('.btnDelService').forEach(b => b.onclick = (e) => {
-      services.splice(e.target.dataset.idx, 1);
-      renderServices();
-    });
-  };
+  // Tab Switching Listener
+  document.querySelectorAll('.builder-tab-btn').forEach(btn => {
+    btn.onclick = (e) => {
+      const targetTab = e.target.dataset.tab;
+      window.location.hash = `#/builder?tab=${targetTab}`;
+    };
+  });
 
-  const renderProducts = () => {
-    const box = document.getElementById('productContainer');
-    box.innerHTML = products.map((p, i) => `
-      <div class="section-item">
-        <div class="section-header">
-          <strong>Produk #${i + 1}</strong>
-          <button type="button" class="btn btn-sm btn-danger btnDelProd" data-idx="${i}">Hapus</button>
+  // Render Sub-Komponen Berdasarkan Tab
+  if (activeTab === 'services') {
+    const renderServices = () => {
+      const box = document.getElementById('serviceContainer');
+      box.innerHTML = services.map((s, i) => `
+        <div class="section-item">
+          <div class="section-header">
+            <strong>Layanan #${i + 1}</strong>
+            <button type="button" class="btn btn-sm btn-danger btnDelService" data-idx="${i}">Hapus</button>
+          </div>
+          <input type="text" class="form-control s-title" placeholder="Nama Layanan" value="${s.title || ''}" style="margin-bottom:0.5rem;" required />
+          <input type="text" class="form-control s-desc" placeholder="Keterangan Singkat" value="${s.desc || ''}" />
         </div>
-        <div class="form-group">
-          <input type="text" class="form-control p-name" placeholder="Nama Produk" value="${p.name || ''}" required />
-        </div>
-        <div class="form-group">
-          <input type="number" class="form-control p-price" placeholder="Harga (Rp)" value="${p.price || ''}" required />
-        </div>
-        <div class="form-group">
-          <input type="text" class="form-control p-desc" placeholder="Keterangan singkat" value="${p.description || ''}" />
-        </div>
-        <div class="form-group" style="background:#f1f5f9; padding:0.75rem; border-radius:6px;">
-          <label style="font-size:0.8rem; font-weight:bold;">Foto Produk (Pilihan Utama: URL Gambar)</label>
-          <input type="url" class="form-control p-url" placeholder="https://contoh.com/foto-produk.jpg" value="${p.imageUrl || ''}" style="margin-bottom:0.5rem;" />
-          
-          <label style="font-size:0.8rem; font-weight:bold;">Atau Upload File:</label>
-          <input type="file" class="form-control p-file" accept="image/*" />
-        </div>
-      </div>
-    `).join('');
-    document.querySelectorAll('.btnDelProd').forEach(b => b.onclick = (e) => {
-      products.splice(e.target.dataset.idx, 1);
-      renderProducts();
-    });
-  };
-
-  const renderFaqs = () => {
-    const box = document.getElementById('faqContainer');
-    box.innerHTML = faqs.map((f, i) => `
-      <div class="section-item">
-        <div class="section-header">
-          <strong>FAQ #${i + 1}</strong>
-          <button type="button" class="btn btn-sm btn-danger btnDelFaq" data-idx="${i}">Hapus</button>
-        </div>
-        <input type="text" class="form-control f-q" placeholder="Pertanyaan (Q)" value="${f.q || ''}" style="margin-bottom:0.5rem;" required />
-        <textarea class="form-control f-a" placeholder="Jawaban (A)" rows="2">${f.a || ''}</textarea>
-      </div>
-    `).join('');
-    document.querySelectorAll('.btnDelFaq').forEach(b => b.onclick = (e) => {
-      faqs.splice(e.target.dataset.idx, 1);
-      renderFaqs();
-    });
-  };
-
-  const renderTestis = () => {
-    const box = document.getElementById('testiContainer');
-    box.innerHTML = testimonials.map((t, i) => `
-      <div class="section-item">
-        <div class="section-header">
-          <strong>Testimoni #${i + 1}</strong>
-          <button type="button" class="btn btn-sm btn-danger btnDelTesti" data-idx="${i}">Hapus</button>
-        </div>
-        <input type="text" class="form-control t-name" placeholder="Nama Pelanggan" value="${t.name || ''}" style="margin-bottom:0.5rem;" required />
-        <textarea class="form-control t-text" placeholder="Ulasan / Testimoni" rows="2">${t.text || ''}</textarea>
-      </div>
-    `).join('');
-    document.querySelectorAll('.btnDelTesti').forEach(b => b.onclick = (e) => {
-      testimonials.splice(e.target.dataset.idx, 1);
-      renderTestis();
-    });
-  };
-
-  renderServices();
-  renderProducts();
-  renderFaqs();
-  renderTestis();
-
-  document.getElementById('btnAddService').onclick = () => {
-    services.push({ title: '', desc: '' });
+      `).join('');
+      document.querySelectorAll('.btnDelService').forEach(b => b.onclick = (e) => {
+        services.splice(e.target.dataset.idx, 1);
+        renderServices();
+      });
+    };
     renderServices();
-  };
-  document.getElementById('btnAddProduct').onclick = () => {
-    if (products.length >= 5) {
-      showToast('Paket Free dibatasi maksimal 5 produk.', 'warning');
-      return;
-    }
-    products.push({ name: '', price: '', description: '', imageUrl: '' });
-    renderProducts();
-  };
-  document.getElementById('btnAddFaq').onclick = () => {
-    faqs.push({ q: '', a: '' });
-    renderFaqs();
-  };
-  document.getElementById('btnAddTesti').onclick = () => {
-    testimonials.push({ name: '', text: '' });
-    renderTestis();
-  };
+    document.getElementById('btnAddService').onclick = () => {
+      services.push({ title: '', desc: '' });
+      renderServices();
+    };
+  }
 
-  document.getElementById('formBuilder').addEventListener('submit', async (e) => {
+  if (activeTab === 'products') {
+    const renderProducts = () => {
+      const box = document.getElementById('productContainer');
+      box.innerHTML = products.map((p, i) => `
+        <div class="section-item">
+          <div class="section-header">
+            <strong>Produk #${i + 1}</strong>
+            <button type="button" class="btn btn-sm btn-danger btnDelProd" data-idx="${i}">Hapus</button>
+          </div>
+          <div class="form-group">
+            <input type="text" class="form-control p-name" placeholder="Nama Produk" value="${p.name || ''}" required />
+          </div>
+          <div class="form-group">
+            <input type="number" class="form-control p-price" placeholder="Harga (Rp)" value="${p.price || ''}" required />
+          </div>
+          <div class="form-group">
+            <input type="text" class="form-control p-desc" placeholder="Keterangan singkat" value="${p.description || ''}" />
+          </div>
+          <div class="form-group" style="background:#f1f5f9; padding:0.75rem; border-radius:6px;">
+            <label style="font-size:0.8rem; font-weight:bold;">Foto Produk (Pilihan 1: URL Gambar)</label>
+            <input type="url" class="form-control p-url" placeholder="https://contoh.com/foto-produk.jpg" value="${p.imageUrl || ''}" style="margin-bottom:0.5rem;" />
+            <label style="font-size:0.8rem; font-weight:bold;">Pilihan 2: Upload File (Kompresi Ringan ~50KB):</label>
+            <input type="file" class="form-control p-file" accept="image/*" />
+          </div>
+        </div>
+      `).join('');
+      document.querySelectorAll('.btnDelProd').forEach(b => b.onclick = (e) => {
+        products.splice(e.target.dataset.idx, 1);
+        renderProducts();
+      });
+    };
+    renderProducts();
+    document.getElementById('btnAddProduct').onclick = () => {
+      if (products.length >= 5) {
+        showToast('Paket Free dibatasi maksimal 5 produk.', 'warning');
+        return;
+      }
+      products.push({ name: '', price: '', description: '', imageUrl: '' });
+      renderProducts();
+    };
+  }
+
+  if (activeTab === 'faqs') {
+    const renderFaqs = () => {
+      const box = document.getElementById('faqContainer');
+      box.innerHTML = faqs.map((f, i) => `
+        <div class="section-item">
+          <div class="section-header">
+            <strong>FAQ #${i + 1}</strong>
+            <button type="button" class="btn btn-sm btn-danger btnDelFaq" data-idx="${i}">Hapus</button>
+          </div>
+          <input type="text" class="form-control f-q" placeholder="Pertanyaan (Q)" value="${f.q || ''}" style="margin-bottom:0.5rem;" required />
+          <textarea class="form-control f-a" placeholder="Jawaban (A)" rows="2">${f.a || ''}</textarea>
+        </div>
+      `).join('');
+      document.querySelectorAll('.btnDelFaq').forEach(b => b.onclick = (e) => {
+        faqs.splice(e.target.dataset.idx, 1);
+        renderFaqs();
+      });
+    };
+    renderFaqs();
+    document.getElementById('btnAddFaq').onclick = () => {
+      faqs.push({ q: '', a: '' });
+      renderFaqs();
+    };
+  }
+
+  if (activeTab === 'testimonials') {
+    const renderTestis = () => {
+      const box = document.getElementById('testiContainer');
+      box.innerHTML = testimonials.map((t, i) => `
+        <div class="section-item">
+          <div class="section-header">
+            <strong>Testimoni #${i + 1}</strong>
+            <button type="button" class="btn btn-sm btn-danger btnDelTesti" data-idx="${i}">Hapus</button>
+          </div>
+          <input type="text" class="form-control t-name" placeholder="Nama Pelanggan" value="${t.name || ''}" style="margin-bottom:0.5rem;" required />
+          <textarea class="form-control t-text" placeholder="Ulasan / Testimoni" rows="2">${t.text || ''}</textarea>
+        </div>
+      `).join('');
+      document.querySelectorAll('.btnDelTesti').forEach(b => b.onclick = (e) => {
+        testimonials.splice(e.target.dataset.idx, 1);
+        renderTestis();
+      });
+    };
+    renderTestis();
+    document.getElementById('btnAddTesti').onclick = () => {
+      testimonials.push({ name: '', text: '' });
+      renderTestis();
+    };
+  }
+
+  // Submit Handler Per-Section (Menyimpan Hanya Perubahan Terkait)
+  document.getElementById('formModularBuilder').addEventListener('submit', async (e) => {
     e.preventDefault();
     const btnSave = document.getElementById('btnSaveBuilder');
     btnSave.disabled = true;
-    btnSave.innerText = "⏳ Sedang Menyimpan Data...";
-    showToast('Sedang memproses dan menyimpan konten...', 'info', 2000);
+    btnSave.innerText = "⏳ Sedang Menyimpan...";
+    showToast('Sedang menyimpan perubahan...', 'info', 1500);
+
+    const updatePayload = { updatedAt: serverTimestamp() };
 
     try {
-      let heroImgUrl = document.getElementById('heroImageUrl').value.trim();
-      const heroFileInput = document.getElementById('heroImageFile');
-      if (heroFileInput.files[0]) {
-        btnSave.innerText = "⏳ Mengunggah Hero Banner...";
-        heroImgUrl = await uploadImageFile(heroFileInput.files[0], `websites/${currentUser.uid}/hero_${Date.now()}`);
-      }
-
-      const pNames = document.querySelectorAll('.p-name');
-      const pPrices = document.querySelectorAll('.p-price');
-      const pDescs = document.querySelectorAll('.p-desc');
-      const pUrls = document.querySelectorAll('.p-url');
-      const pFiles = document.querySelectorAll('.p-file');
-
-      const updatedProducts = [];
-      for (let i = 0; i < pNames.length; i++) {
-        let pImgUrl = pUrls[i].value.trim();
-        if (pFiles[i].files[0]) {
-          btnSave.innerText = `⏳ Mengunggah Foto Produk #${i+1}...`;
-          pImgUrl = await uploadImageFile(pFiles[i].files[0], `websites/${currentUser.uid}/prod_${i}_${Date.now()}`);
+      if (activeTab === 'identity') {
+        updatePayload.siteName = document.getElementById('siteName').value.trim();
+        updatePayload.description = document.getElementById('siteDesc').value.trim();
+      } else if (activeTab === 'hero') {
+        let heroImgUrl = document.getElementById('heroImageUrl').value.trim();
+        const heroFileInput = document.getElementById('heroImageFile');
+        if (heroFileInput.files[0]) {
+          btnSave.innerText = "⏳ Mengunggah Hero Banner...";
+          heroImgUrl = await uploadImageFile(heroFileInput.files[0], `websites/${currentUser.uid}/hero_${Date.now()}`);
         }
-        updatedProducts.push({
-          name: pNames[i].value,
-          price: Number(pPrices[i].value),
-          description: pDescs[i].value,
-          imageUrl: pImgUrl
-        });
-      }
-
-      const sTitles = document.querySelectorAll('.s-title');
-      const sDescs = document.querySelectorAll('.s-desc');
-      const updatedServices = [];
-      for (let i = 0; i < sTitles.length; i++) {
-        updatedServices.push({ title: sTitles[i].value, desc: sDescs[i].value });
-      }
-
-      const fQs = document.querySelectorAll('.f-q');
-      const fAs = document.querySelectorAll('.f-a');
-      const updatedFaqs = [];
-      for (let i = 0; i < fQs.length; i++) {
-        updatedFaqs.push({ q: fQs[i].value, a: fAs[i].value });
-      }
-
-      const tNames = document.querySelectorAll('.t-name');
-      const tTexts = document.querySelectorAll('.t-text');
-      const updatedTestis = [];
-      for (let i = 0; i < tNames.length; i++) {
-        updatedTestis.push({ name: tNames[i].value, text: tTexts[i].value });
-      }
-
-      await updateDoc(doc(db, 'websites', currentUser.uid), {
-        siteName: document.getElementById('siteName').value,
-        description: document.getElementById('siteDesc').value,
-        hero: {
-          title: document.getElementById('heroTitle').value,
-          subtitle: document.getElementById('heroSubtitle').value,
+        updatePayload.hero = {
+          title: document.getElementById('heroTitle').value.trim(),
+          subtitle: document.getElementById('heroSubtitle').value.trim(),
           imageUrl: heroImgUrl
-        },
-        about: {
-          title: document.getElementById('aboutTitle').value,
-          content: document.getElementById('aboutContent').value
-        },
-        services: updatedServices,
-        products: updatedProducts,
-        faqs: updatedFaqs,
-        testimonials: updatedTestis,
-        contact: {
-          whatsapp: document.getElementById('siteWa').value,
-          address: document.getElementById('siteAddress').value
-        },
-        updatedAt: serverTimestamp()
-      });
+        };
+      } else if (activeTab === 'about') {
+        updatePayload.about = {
+          title: document.getElementById('aboutTitle').value.trim(),
+          content: document.getElementById('aboutContent').value.trim()
+        };
+      } else if (activeTab === 'services') {
+        const sTitles = document.querySelectorAll('.s-title');
+        const sDescs = document.querySelectorAll('.s-desc');
+        const updatedServices = [];
+        for (let i = 0; i < sTitles.length; i++) {
+          updatedServices.push({ title: sTitles[i].value, desc: sDescs[i].value });
+        }
+        updatePayload.services = updatedServices;
+      } else if (activeTab === 'products') {
+        const pNames = document.querySelectorAll('.p-name');
+        const pPrices = document.querySelectorAll('.p-price');
+        const pDescs = document.querySelectorAll('.p-desc');
+        const pUrls = document.querySelectorAll('.p-url');
+        const pFiles = document.querySelectorAll('.p-file');
 
-      showToast('Perubahan berhasil disimpan!', 'success');
+        const updatedProducts = [];
+        for (let i = 0; i < pNames.length; i++) {
+          let pImgUrl = pUrls[i].value.trim();
+          if (pFiles[i].files[0]) {
+            btnSave.innerText = `⏳ Mengunggah Foto Produk #${i+1}...`;
+            pImgUrl = await uploadImageFile(pFiles[i].files[0], `websites/${currentUser.uid}/prod_${i}_${Date.now()}`);
+          }
+          updatedProducts.push({
+            name: pNames[i].value,
+            price: Number(pPrices[i].value),
+            description: pDescs[i].value,
+            imageUrl: pImgUrl
+          });
+        }
+        updatePayload.products = updatedProducts;
+      } else if (activeTab === 'faqs') {
+        const fQs = document.querySelectorAll('.f-q');
+        const fAs = document.querySelectorAll('.f-a');
+        const updatedFaqs = [];
+        for (let i = 0; i < fQs.length; i++) {
+          updatedFaqs.push({ q: fQs[i].value, a: fAs[i].value });
+        }
+        updatePayload.faqs = updatedFaqs;
+      } else if (activeTab === 'testimonials') {
+        const tNames = document.querySelectorAll('.t-name');
+        const tTexts = document.querySelectorAll('.t-text');
+        const updatedTestis = [];
+        for (let i = 0; i < tNames.length; i++) {
+          updatedTestis.push({ name: tNames[i].value, text: tTexts[i].value });
+        }
+        updatePayload.testimonials = updatedTestis;
+      } else if (activeTab === 'contact') {
+        updatePayload.contact = {
+          whatsapp: document.getElementById('siteWa').value.trim(),
+          address: document.getElementById('siteAddress').value.trim()
+        };
+      }
+
+      await updateDoc(doc(db, 'websites', currentUser.uid), updatePayload);
+      showToast('Bagian berhasil disimpan!', 'success');
       navigate('#/dashboard');
     } catch (err) {
       showToast('Gagal menyimpan: ' + err.message, 'error');
     } finally {
       btnSave.disabled = false;
-      btnSave.innerText = "Simpan Seluruh Perubahan";
+      btnSave.innerText = "Simpan Bagian Ini";
     }
   });
 }
 
-// 5. ADMIN CONTROL PANEL (Lengkap dengan Manajemen User, Website, & Laporan)
+// 5. ADMIN CONTROL PANEL
 async function renderAdminDashboard() {
   const app = document.getElementById('app');
   app.innerHTML = `<div class="card"><p>Memuat Admin Dashboard...</p></div>`;
@@ -974,7 +1056,7 @@ async function renderAdminDashboard() {
       <tr>
         <td>
           <strong>${u.name || '-'}</strong><br/>
-          <small>${u.email || '-'} (@${u.username || '-'})</small>
+          <small class="url-box">${u.email || '-'} (@${u.username || '-'})</small>
         </td>
         <td>
           <span class="badge ${u.role === 'admin' ? 'badge-published' : 'badge-draft'}">${u.role?.toUpperCase() || 'USER'}</span>
@@ -987,7 +1069,7 @@ async function renderAdminDashboard() {
             <div style="display:flex; gap:4px; flex-wrap:wrap;">
               ${!isSuspended ? `
                 <button class="btn btn-sm btn-danger btnSuspendUser" data-id="${uid}" data-name="${u.name}">
-                  ⛔ Suspend User
+                  ⛔ Suspend
                 </button>
               ` : `
                 <button class="btn btn-sm btn-success btnReactivateUser" data-id="${uid}">
@@ -998,7 +1080,7 @@ async function renderAdminDashboard() {
                 ${u.role === 'admin' ? 'Set User' : 'Set Admin'}
               </button>
             </div>
-          ` : '<span style="color:var(--text-muted); font-size:0.8rem;">(Akun Anda Saat Ini)</span>'}
+          ` : '<span style="color:var(--text-muted); font-size:0.8rem;">(Akun Anda)</span>'}
         </td>
       </tr>
     `;
@@ -1017,8 +1099,8 @@ async function renderAdminDashboard() {
     sitesHtml += `
       <tr>
         <td>
-          <strong>${site.siteName || '-'}</strong> ${isAdminDemo ? '<span class="badge badge-approved" style="font-size:0.65rem;">DEMO PLATFORM</span>' : ''}<br/>
-          <small>@${site.username} (${site.plan?.toUpperCase() || 'FREE'})</small>
+          <strong>${site.siteName || '-'}</strong> ${isAdminDemo ? '<span class="badge badge-approved" style="font-size:0.65rem;">DEMO</span>' : ''}<br/>
+          <small class="url-box">@${site.username}</small>
         </td>
         <td>
           <span class="badge badge-${site.status}">${site.status?.replace('_', ' ').toUpperCase()}</span>
@@ -1035,7 +1117,7 @@ async function renderAdminDashboard() {
 
             ${!isDraft ? `
               <button class="btn btn-sm btn-secondary btnDirectDraft" data-id="${siteId}" data-name="${site.siteName}">
-                📝 Set Draft
+                📝 Draft
               </button>
             ` : ''}
 
@@ -1054,7 +1136,7 @@ async function renderAdminDashboard() {
     `;
   });
 
-  // 3. Baris Tabel Laporan Pelanggaran (Reports)
+  // 3. Baris Tabel Laporan Pelanggaran (Dengan URL Landing Page Lengkap)
   let reportsHtml = '';
   let newReportsCount = 0;
   repSnap.forEach(rDoc => {
@@ -1063,18 +1145,22 @@ async function renderAdminDashboard() {
     const isNew = r.status === 'new';
     if (isNew) newReportsCount++;
 
-    const dateStr = r.createdAt?.toDate ? r.createdAt.toDate().toLocaleString('id-ID') : 'Baru saja';
+    const dateStr = r.createdAt?.toDate ? r.createdAt.toDate().toLocaleDateString('id-ID') : 'Baru saja';
+    const reportedUrl = r.targetUrl || `${window.location.origin}${BASE_PATH}/#/site/${r.websiteId}`;
 
     reportsHtml += `
       <tr style="${isNew ? 'background:#fffbeb;' : ''}">
         <td>
-          <strong>${r.siteName || 'Website ID: ' + r.websiteId}</strong><br/>
+          <strong>${r.siteName || '-'}</strong><br/>
+          <a href="${reportedUrl}" target="_blank" class="url-box" style="color:var(--primary); font-size:0.8rem; font-weight:600;">
+            ${reportedUrl}
+          </a><br/>
           <small style="color:var(--text-muted);">${dateStr}</small>
         </td>
         <td>
           <strong style="color:#b91c1c;">${r.reason || '-'}</strong>
           ${r.description ? `<p style="font-size:0.8rem; color:#475569; margin-top:2px;">"${r.description}"</p>` : ''}
-          <small style="color:var(--text-muted);">Pelapor: ${r.reporterEmail || 'Anonim'}</small>
+          <small class="url-box" style="color:var(--text-muted);">Pelapor: ${r.reporterEmail || 'Anonim'}</small>
         </td>
         <td>
           <span class="badge ${isNew ? 'badge-rejected' : (r.status === 'resolved' ? 'badge-published' : 'badge-draft')}">
@@ -1102,21 +1188,21 @@ async function renderAdminDashboard() {
 
   app.innerHTML = `
     <div class="card">
-      <div style="display:flex; justify-content:space-between; align-items:center;">
+      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem;">
         <div>
           <h2>Pusat Kendali Administrator</h2>
           <p class="help-text">Pengawasan Platform, Moderasi Konten & Manajemen Pengguna</p>
         </div>
         <div>
-          <a href="#/builder" class="btn btn-sm btn-primary">🛠️ Edit Website Demo</a>
-          <a href="${adminDemoUrl}" target="_blank" class="btn btn-sm btn-success">Lihat Website Demo</a>
+          <a href="#/builder?tab=identity" class="btn btn-sm btn-primary">🛠️ Edit Demo</a>
+          <a href="${adminDemoUrl}" target="_blank" class="btn btn-sm btn-success">Lihat Demo</a>
         </div>
       </div>
 
       <div class="lp-grid" style="margin-top:1.5rem;">
         <div class="lp-card">
           <h2 style="color:var(--primary);">${uSnap.size}</h2>
-          <p>Total Pengguna</p>
+          <p>Pengguna</p>
         </div>
         <div class="lp-card">
           <h2 style="color:var(--badge-pending);">${pSnap.size}</h2>
@@ -1124,18 +1210,18 @@ async function renderAdminDashboard() {
         </div>
         <div class="lp-card">
           <h2 style="color:var(--badge-published);">${pubSnap.size}</h2>
-          <p>Website Published</p>
+          <p>Published</p>
         </div>
         <div class="lp-card">
           <h2 style="color:#dc2626;">${repSnap.size}</h2>
-          <p>Laporan Masuk</p>
+          <p>Laporan</p>
         </div>
       </div>
     </div>
 
     ${pSnap.size > 0 ? `
       <div class="card" style="border: 2px solid var(--badge-pending); background: #fffbeb;">
-        <div style="display:flex; justify-content:space-between; align-items:center;">
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem;">
           <div>
             <h3 style="color:#b45309;">⚠️ Ada ${pSnap.size} Website Menunggu Moderasi!</h3>
             <p style="margin-top:0.25rem;">Pengguna telah mengajukan permohonan publikasi website baru.</p>
@@ -1145,20 +1231,19 @@ async function renderAdminDashboard() {
       </div>
     ` : ''}
 
-    <!-- TABEL LAPORAN PELANGGARAN PENGGUNA (REPORTS) -->
     <div class="card" style="${newReportsCount > 0 ? 'border: 2px solid #ef4444;' : ''}">
       <div style="display:flex; justify-content:space-between; align-items:center;">
         <h3>🚨 Laporan Penyalahgunaan Website (${repSnap.size})</h3>
-        ${newReportsCount > 0 ? `<span class="badge badge-rejected">${newReportsCount} Laporan Baru</span>` : ''}
+        ${newReportsCount > 0 ? `<span class="badge badge-rejected">${newReportsCount} Baru</span>` : ''}
       </div>
-      <p class="help-text" style="margin-bottom:1rem;">Daftar laporan dari pengunjung publik terkait website yang terindikasi melanggar aturan platform.</p>
+      <p class="help-text" style="margin-bottom:1rem;">Daftar target URL landing page yang dilaporkan masyarakat.</p>
       
       <div class="table-responsive">
         <table>
           <thead>
             <tr>
-              <th>Target Website</th>
-              <th>Detail Laporan & Alasan</th>
+              <th>Target Website & URL</th>
+              <th>Detail Laporan</th>
               <th>Status</th>
               <th>Tindakan Admin</th>
             </tr>
@@ -1171,50 +1256,44 @@ async function renderAdminDashboard() {
     </div>
 
     <div class="card">
-      <h3>👥 Kelola Akun Pengguna (Users)</h3>
-      <p class="help-text" style="margin-bottom:1rem;">Tangguhkan atau pulihkan akun user yang terindikasi spam/pelanggaran.</p>
-      
+      <h3>👥 Kelola Akun Pengguna</h3>
       <div class="table-responsive">
         <table>
           <thead>
             <tr>
-              <th>Nama & Email</th>
+              <th>Pengguna</th>
               <th>Role</th>
-              <th>Status Akun</th>
-              <th>Aksi Admin</th>
+              <th>Status</th>
+              <th>Aksi</th>
             </tr>
           </thead>
           <tbody>
-            ${usersHtml || '<tr><td colspan="4">Belum ada user terdaftar.</td></tr>'}
+            ${usersHtml || '<tr><td colspan="4">Belum ada user.</td></tr>'}
           </tbody>
         </table>
       </div>
     </div>
 
     <div class="card">
-      <h3>🌐 Kelola Seluruh Landing Page Platform</h3>
-      <p class="help-text" style="margin-bottom:1rem;">Admin memiliki hak langsung mempublikasikan, mengembalikan ke draft, atau menangguhkan website.</p>
-      
+      <h3>🌐 Kelola Seluruh Landing Page</h3>
       <div class="table-responsive">
         <table>
           <thead>
             <tr>
-              <th>Website & Username</th>
-              <th>Status Saat Ini</th>
+              <th>Website</th>
+              <th>Status</th>
               <th>Aksi Cepat</th>
             </tr>
           </thead>
           <tbody>
-            ${sitesHtml || '<tr><td colspan="3">Belum ada website terdaftar.</td></tr>'}
+            ${sitesHtml || '<tr><td colspan="3">Belum ada website.</td></tr>'}
           </tbody>
         </table>
       </div>
     </div>
   `;
 
-  // === LISTENERS LAPORAN (REPORTS) ===
-  
-  // Suspend dari Laporan
+  // === LISTENERS LAPORAN ===
   document.querySelectorAll('.btnReportSuspend').forEach(btn => {
     btn.onclick = (e) => {
       const siteId = e.target.dataset.siteid;
@@ -1240,14 +1319,13 @@ async function renderAdminDashboard() {
             resolvedAt: serverTimestamp()
           });
 
-          showToast(`Website "${siteName}" telah ditangguhkan dan laporan diselesaikan!`, 'success');
+          showToast(`Website "${siteName}" telah disuspend!`, 'success');
           renderAdminDashboard();
         }
       );
     };
   });
 
-  // Resolve Laporan
   document.querySelectorAll('.btnResolveReport').forEach(btn => {
     btn.onclick = (e) => {
       const repId = e.target.dataset.id;
@@ -1256,51 +1334,41 @@ async function renderAdminDashboard() {
           status: 'resolved',
           resolvedAt: serverTimestamp()
         });
-        showToast('Laporan ditandai sebagai selesai.', 'success');
+        showToast('Laporan diselesaikan.', 'success');
         renderAdminDashboard();
       });
     };
   });
 
-  // Dismiss Laporan
   document.querySelectorAll('.btnDismissReport').forEach(btn => {
     btn.onclick = (e) => {
       const repId = e.target.dataset.id;
-      showConfirm('Abaikan Laporan', 'Abaikan laporan ini (Dianggap tidak melanggar aturan)?', async () => {
+      showConfirm('Abaikan Laporan', 'Abaikan laporan ini?', async () => {
         await updateDoc(doc(db, 'reports', repId), {
           status: 'dismissed',
           dismissedAt: serverTimestamp()
         });
-        showToast('Laporan telah diabaikan.', 'info');
+        showToast('Laporan diabaikan.', 'info');
         renderAdminDashboard();
       });
     };
   });
 
-  // === LISTENERS USER & WEBSITE MANAGEMENT ===
+  // User & Website Actions
   document.querySelectorAll('.btnSuspendUser').forEach(btn => {
     btn.onclick = (e) => {
       const uid = e.target.dataset.id;
       const name = e.target.dataset.name;
       showConfirm(
         'Tangguhkan Pengguna',
-        `Apakah Anda yakin ingin menangguhkan (Suspend) akun "${name}"? Seluruh website miliknya tidak akan bisa diakses publik.`,
+        `Tangguhkan akun "${name}"? Seluruh website miliknya tidak akan bisa diakses.`,
         async () => {
           await updateDoc(doc(db, 'users', uid), { status: 'suspended' });
           await updateDoc(doc(db, 'websites', uid), { 
             status: 'suspended', 
             published: false,
-            moderationNote: 'Akun pemilik website telah dinonaktifkan oleh administrator.'
+            moderationNote: 'Akun dinonaktifkan administrator.'
           });
-
-          await addDoc(collection(db, 'moderationLogs'), {
-            adminId: currentUser.uid,
-            userId: uid,
-            action: 'suspend_user',
-            reason: 'Akun user dinonaktifkan',
-            createdAt: serverTimestamp()
-          });
-
           showToast(`Akun "${name}" telah ditangguhkan!`, 'warning');
           renderAdminDashboard();
         },
@@ -1326,9 +1394,9 @@ async function renderAdminDashboard() {
       const uid = e.target.dataset.id;
       const currentRole = e.target.dataset.role;
       const newRole = currentRole === 'admin' ? 'user' : 'admin';
-      showConfirm('Ubah Peran Pengguna', `Ubah role pengguna ini menjadi "${newRole.toUpperCase()}"?`, async () => {
+      showConfirm('Ubah Peran', `Ubah role pengguna menjadi "${newRole.toUpperCase()}"?`, async () => {
         await updateDoc(doc(db, 'users', uid), { role: newRole });
-        showToast(`Role berhasil diubah menjadi ${newRole.toUpperCase()}.`, 'success');
+        showToast(`Role diubah menjadi ${newRole.toUpperCase()}.`, 'success');
         renderAdminDashboard();
       });
     };
@@ -1338,7 +1406,7 @@ async function renderAdminDashboard() {
     btn.onclick = (e) => {
       const siteId = e.target.dataset.id;
       const name = e.target.dataset.name;
-      showConfirm('Publikasikan Website', `Publikasikan website "${name}" sekarang agar dapat diakses umum?`, async () => {
+      showConfirm('Publikasikan Website', `Publikasikan "${name}" sekarang?`, async () => {
         await updateDoc(doc(db, 'websites', siteId), {
           status: 'published',
           published: true,
@@ -1346,15 +1414,6 @@ async function renderAdminDashboard() {
           reviewedBy: currentUser.uid,
           reviewedAt: serverTimestamp()
         });
-
-        await addDoc(collection(db, 'moderationLogs'), {
-          adminId: currentUser.uid,
-          websiteId: siteId,
-          action: 'publish_direct',
-          reason: 'Dipublikasikan langsung oleh admin',
-          createdAt: serverTimestamp()
-        });
-
         showToast(`Website "${name}" telah DIPUBLIKASIKAN!`, 'success');
         renderAdminDashboard();
       }, 'Publikasikan');
@@ -1365,15 +1424,14 @@ async function renderAdminDashboard() {
     btn.onclick = (e) => {
       const siteId = e.target.dataset.id;
       const name = e.target.dataset.name;
-      showConfirm('Kembalikan ke Draft', `Ubah website "${name}" kembali menjadi DRAFT (Ditarik dari publik)?`, async () => {
+      showConfirm('Kembalikan ke Draft', `Ubah "${name}" menjadi DRAFT?`, async () => {
         await updateDoc(doc(db, 'websites', siteId), {
           status: 'draft',
           published: false,
           approved: false,
           updatedAt: serverTimestamp()
         });
-
-        showToast(`Website "${name}" telah diubah menjadi DRAFT.`, 'info');
+        showToast(`Website "${name}" diubah ke DRAFT.`, 'info');
         renderAdminDashboard();
       });
     };
@@ -1384,8 +1442,8 @@ async function renderAdminDashboard() {
       const siteId = e.target.dataset.id;
       const name = e.target.dataset.name;
       showPrompt(
-        'Penangguhan Website (Suspend)',
-        `Tuliskan alasan penangguhan untuk website "${name}":`,
+        'Penangguhan Website',
+        `Alasan penangguhan "${name}":`,
         'Melanggar kebijakan platform / Spam',
         async (reason) => {
           await updateDoc(doc(db, 'websites', siteId), {
@@ -1395,11 +1453,9 @@ async function renderAdminDashboard() {
             reviewedBy: currentUser.uid,
             reviewedAt: serverTimestamp()
           });
-
           showToast(`Website "${name}" telah di-SUSPEND!`, 'warning');
           renderAdminDashboard();
-        },
-        'Contoh: Penipuan, Judi, Konten Ilegal'
+        }
       );
     };
   });
@@ -1407,14 +1463,14 @@ async function renderAdminDashboard() {
   document.querySelectorAll('.btnDirectUnsuspend').forEach(btn => {
     btn.onclick = (e) => {
       const siteId = e.target.dataset.id;
-      showConfirm('Buka Penangguhan', 'Buka penangguhan website ini dan kembalikan ke status Draft?', async () => {
+      showConfirm('Buka Penangguhan', 'Buka penangguhan website ini?', async () => {
         await updateDoc(doc(db, 'websites', siteId), {
           status: 'draft',
           published: false,
           moderationNote: '',
           updatedAt: serverTimestamp()
         });
-        showToast('Website telah di-unsuspend dan berstatus Draft.', 'success');
+        showToast('Website telah di-unsuspend.', 'success');
         renderAdminDashboard();
       });
     };
@@ -1452,8 +1508,8 @@ async function renderAdminReviews() {
       <div class="section-item">
         <h3>${data.siteName} (@${data.username})</h3>
         <p style="color:var(--text-muted); font-size:0.9rem; margin-top:0.25rem;">${data.description || '-'}</p>
-        <div style="margin-top:1rem; display:flex; gap:0.5rem;">
-          <button class="btn btn-sm btn-secondary btnPreviewAdmin" data-user="${data.username}">Preview Landing Page</button>
+        <div style="margin-top:1rem; display:flex; gap:0.5rem; flex-wrap:wrap;">
+          <button class="btn btn-sm btn-secondary btnPreviewAdmin" data-user="${data.username}">Preview</button>
           <button class="btn btn-sm btn-success btnApprove" data-id="${docSnap.id}">Approve & Publish</button>
           <button class="btn btn-sm btn-danger btnReject" data-id="${docSnap.id}">Reject</button>
         </div>
@@ -1479,7 +1535,7 @@ async function renderAdminReviews() {
           reviewedBy: currentUser.uid,
           reviewedAt: serverTimestamp()
         });
-        showToast('Landing page berhasil disetujui & dipublikasikan!', 'success');
+        showToast('Landing page berhasil dipublikasikan!', 'success');
         renderAdminReviews();
       }, 'Setujui & Publish');
     };
@@ -1499,7 +1555,7 @@ async function renderAdminReviews() {
         });
         showToast('Landing page ditolak.', 'warning');
         renderAdminReviews();
-      }, 'Tulis alasan penolakan...');
+      });
     };
   });
 }
@@ -1522,6 +1578,7 @@ async function renderPublicLandingPage(username) {
 
     const siteDoc = snap.docs[0];
     const site = siteDoc.data();
+    const targetUrl = window.location.href;
 
     document.title = site.siteName || "Official Website";
     
@@ -1548,7 +1605,6 @@ async function renderPublicLandingPage(username) {
 
     root.innerHTML = `
       <div class="landing-page">
-        <!-- Hero Section -->
         <header class="lp-hero">
           <div class="lp-hero-with-img">
             ${site.hero?.imageUrl ? `<img src="${site.hero.imageUrl}" class="lp-hero-img" alt="${site.siteName}" />` : ''}
@@ -1565,7 +1621,6 @@ async function renderPublicLandingPage(username) {
           </div>
         </header>
 
-        <!-- Tentang Kami -->
         ${site.about?.content ? `
           <section class="lp-section">
             <h2 class="lp-section-title">${site.about.title || 'Tentang Kami'}</h2>
@@ -1575,7 +1630,6 @@ async function renderPublicLandingPage(username) {
           </section>
         ` : ''}
 
-        <!-- Layanan -->
         ${site.services?.length ? `
           <section class="lp-section">
             <h2 class="lp-section-title">Layanan & Keunggulan</h2>
@@ -1591,7 +1645,6 @@ async function renderPublicLandingPage(username) {
           </section>
         ` : ''}
 
-        <!-- Produk -->
         ${site.products?.length ? `
           <section class="lp-section">
             <h2 class="lp-section-title">Pilihan Produk & Paket</h2>
@@ -1615,7 +1668,6 @@ async function renderPublicLandingPage(username) {
           </section>
         ` : ''}
 
-        <!-- FAQ -->
         ${site.faqs?.length ? `
           <section class="lp-section">
             <h2 class="lp-section-title">Pertanyaan yang Sering Diajukan (FAQ)</h2>
@@ -1631,7 +1683,6 @@ async function renderPublicLandingPage(username) {
           </section>
         ` : ''}
 
-        <!-- Testimoni -->
         ${site.testimonials?.length ? `
           <section class="lp-section">
             <h2 class="lp-section-title">Ulasan Pelanggan</h2>
@@ -1647,7 +1698,6 @@ async function renderPublicLandingPage(username) {
           </section>
         ` : ''}
 
-        <!-- Kontak & Alamat -->
         <section class="lp-section" style="text-align:center; background:#fafafa;">
           <h2 class="lp-section-title">Hubungi Kami</h2>
           <p style="margin-top:0.5rem; color:#475569;">${site.contact?.address || 'Alamat operasional belum dicantumkan.'}</p>
@@ -1668,7 +1718,7 @@ async function renderPublicLandingPage(username) {
     `;
 
     document.getElementById('btnReport')?.addEventListener('click', () => {
-      showReportModal(siteDoc.id, site.siteName || `@${username}`);
+      showReportModal(siteDoc.id, targetUrl, site.siteName || `@${username}`);
     });
 
   } catch (err) {
