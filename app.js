@@ -323,7 +323,6 @@ const router = async () => {
     return;
   }
 
-  // Reset default SEO jika di dashboard
   document.title = "Bandar Builder - Landing Page Engine";
   updateMetaTag('meta[name="description"]', 'content', 'Platform Pembuat Landing Page Bisnis & UMKM');
   updateMetaTag('meta[property="og:title"]', 'content', 'Bandar Builder');
@@ -783,7 +782,7 @@ async function renderModularBuilder(activeTab = 'identity') {
       <div style="display:flex; justify-content:space-between; align-items:center;">
         <div>
           <h3>Katalog Produk & Harga</h3>
-          <p class="help-text">Maksimal 6 produk. Tampilan komputer berupa grid 3 kolom sejajar.</p>
+          <p class="help-text">Maksimal 6 produk. Di desktop otomatis tersusun 3 baris × 2 kolom sejajar.</p>
         </div>
         <button type="button" id="btnAddProduct" class="btn btn-sm btn-secondary">+ Tambah Produk</button>
       </div>
@@ -1653,16 +1652,22 @@ function addToCart(product) {
   showToast(`"${product.name}" berhasil ditambahkan ke keranjang!`, 'success', 2500);
 }
 
-// Update Tombol Melayang Keranjang
+// Update Tombol Melayang Keranjang Bundar & Badge
 function updateFloatingCartUI() {
   const cartBtn = document.getElementById('floating-cart-btn');
+  const cartBadge = document.getElementById('floating-cart-badge');
   if (!cartBtn) return;
+
   const totalCount = currentSiteCart.reduce((sum, item) => sum + item.qty, 0);
   if (totalCount > 0) {
     cartBtn.style.display = 'flex';
-    cartBtn.innerHTML = `🛒 Keranjang <span>(${totalCount})</span>`;
+    if (cartBadge) {
+      cartBadge.innerText = totalCount;
+      cartBadge.style.display = 'flex';
+    }
   } else {
     cartBtn.style.display = 'none';
+    if (cartBadge) cartBadge.style.display = 'none';
   }
 }
 
@@ -1698,7 +1703,6 @@ function showCartCheckoutModal(merchantWa, siteName) {
 
     modal.querySelector('.cart-total-amount').innerText = `Rp ${calculateTotal().toLocaleString('id-ID')}`;
 
-    // Listener kuantitas
     modal.querySelectorAll('.btn-qty-minus').forEach(b => {
       b.onclick = (e) => {
         const i = Number(e.target.dataset.idx);
@@ -1802,7 +1806,6 @@ function showCartCheckoutModal(merchantWa, siteName) {
 
     const total = calculateTotal();
     
-    // Susun Format Pesan WhatsApp
     let orderListText = currentSiteCart.map((item, idx) => 
       `${idx + 1}. *${item.name}* (x${item.qty}) = Rp ${(item.price * item.qty).toLocaleString('id-ID')}`
     ).join('\n');
@@ -1825,11 +1828,10 @@ function showCartCheckoutModal(merchantWa, siteName) {
     const waUrl = `https://wa.me/${targetWaNumber}?text=${encodeURIComponent(waMessage)}`;
 
     modal.remove();
-    // Kosongkan keranjang & refresh UI
     currentSiteCart = [];
     updateFloatingCartUI();
 
-    showToast('Pesanan berhasil dibuat! Anda diarahkan ke WhatsApp...', 'success', 3000);
+    showToast('Pesanan berhasil dibuat! Mengalihkan ke WhatsApp...', 'success', 3000);
     window.open(waUrl, '_blank');
   };
 }
@@ -1854,7 +1856,7 @@ async function renderPublicLandingPage(activeUsername) {
     const site = siteDoc.data();
     const finalUsername = (site.username || activeUsername).toLowerCase().trim();
 
-    // 1. UPDATE DYNAMIC SEO & OPENGRAPH META TAGS
+    // DYNAMIC SEO & OPENGRAPH META TAGS
     const fullTitle = `${site.siteName || 'Official Website'}`;
     const fullDesc = site.description || `Website resmi ${site.siteName}`;
     const shareImage = site.hero?.imageUrl || (site.products?.[0]?.imageUrl || '');
@@ -1888,9 +1890,10 @@ async function renderPublicLandingPage(activeUsername) {
 
     root.innerHTML = `
       <div class="landing-page">
-        <!-- Floating Cart Button -->
-        <button id="floating-cart-btn" class="floating-cart-btn" style="display:none;">
-          🛒 Keranjang (0)
+        <!-- Floating Cart Circle Button dengan Icon Bundar & Badge Angka -->
+        <button id="floating-cart-btn" class="floating-cart-circle" style="display:none;" title="Lihat Keranjang Belanja">
+          🛒
+          <span id="floating-cart-badge" class="cart-badge" style="display:none;">0</span>
         </button>
 
         <!-- Hero Section -->
@@ -1936,7 +1939,7 @@ async function renderPublicLandingPage(activeUsername) {
           </section>
         ` : ''}
 
-        <!-- Katalog Produk (Maks 6 Item, Grid 3 Desktop, Excerpt Sejajar, Cart System) -->
+        <!-- Katalog Produk (Maks 6 Item, Grid 3 Baris x 2 Kolom di Desktop, Excerpt Sejajar) -->
         ${productList.length ? `
           <section class="lp-section">
             <h2 class="lp-section-title">Pilihan Produk & Paket</h2>
@@ -1945,10 +1948,14 @@ async function renderPublicLandingPage(activeUsername) {
               ${productList.map((p, pIdx) => `
                 <div class="lp-prod-card">
                   <div>
-                    ${p.imageUrl ? `<img src="${p.imageUrl}" class="lp-prod-img" alt="${p.name}" />` : '<div class="lp-prod-img-placeholder">🛍️</div>'}
-                    <h3 class="lp-prod-title">${p.name}</h3>
-                    <div class="lp-prod-price">Rp ${Number(p.price).toLocaleString('id-ID')}</div>
-                    <p class="lp-prod-excerpt">${p.description || ''}</p>
+                    <div class="lp-prod-img-box">
+                      ${p.imageUrl ? `<img src="${p.imageUrl}" class="lp-prod-img" alt="${p.name}" />` : '<div class="lp-prod-img-placeholder">🛍️</div>'}
+                    </div>
+                    <div class="lp-prod-content">
+                      <h3 class="lp-prod-title">${p.name}</h3>
+                      <div class="lp-prod-price">Rp ${Number(p.price).toLocaleString('id-ID')}</div>
+                      <p class="lp-prod-excerpt">${p.description || ''}</p>
+                    </div>
                   </div>
                   <div class="lp-prod-actions">
                     <button type="button" class="btn btn-sm btn-secondary btnViewDetail" data-idx="${pIdx}">
@@ -2017,7 +2024,7 @@ async function renderPublicLandingPage(activeUsername) {
       </div>
     `;
 
-    // Pasang Event Listeners E-Commerce
+    // Pasang Event Listeners
     const merchantWa = site.contact?.whatsapp || '';
     const siteName = site.siteName || `@${finalUsername}`;
 
@@ -2037,7 +2044,7 @@ async function renderPublicLandingPage(activeUsername) {
       };
     });
 
-    // 3. Tombol Floating Cart
+    // 3. Tombol Floating Cart Bundar
     document.getElementById('floating-cart-btn')?.addEventListener('click', () => {
       showCartCheckoutModal(merchantWa, siteName);
     });
