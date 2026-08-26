@@ -110,8 +110,10 @@ table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
 th, td { padding: 0.75rem 0.75rem; text-align: left; border-bottom: 1px solid var(--border); font-size: 0.85rem; }
 th { background: #f1f5f9; font-weight: 600; }
 
-/* Landing Page Mode (Public View) */
-.landing-page { max-width: 1000px; margin: 0 auto; background: #ffffff; min-height: 100vh; box-shadow: 0 0 25px rgba(0,0,0,0.06); }
+/* ========================================================
+   LANDING PAGE & PRODUCT CATALOG (3-COLUMN DESKTOP GRID)
+   ======================================================== */
+.landing-page { max-width: 1000px; margin: 0 auto; background: #ffffff; min-height: 100vh; box-shadow: 0 0 25px rgba(0,0,0,0.06); position: relative; }
 .lp-hero { padding: 4rem 1.5rem; background: linear-gradient(135deg, #eff6ff 0%, #f8fafc 100%); text-align: center; }
 .lp-hero-with-img { display: flex; flex-direction: column; align-items: center; gap: 1.5rem; }
 .lp-hero-img { max-width: 100%; max-height: 380px; border-radius: 12px; object-fit: cover; box-shadow: 0 10px 20px rgba(0,0,0,0.08); }
@@ -120,10 +122,142 @@ th { background: #f1f5f9; font-weight: 600; }
 .lp-section { padding: 3.5rem 1.5rem; border-bottom: 1px solid var(--border); }
 .lp-section-title { text-align: center; font-size: 1.75rem; font-weight: 700; margin-bottom: 0.5rem; color: #0f172a; }
 .lp-section-sub { text-align: center; font-size: 0.95rem; color: var(--text-muted); margin-bottom: 2rem; }
+
+/* Grid Umum (Layanan & Testimoni) */
 .lp-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1.25rem; }
 .lp-card { border: 1px solid var(--border); border-radius: 10px; padding: 1.25rem; background: #ffffff; text-align: center; }
-.lp-prod-img { width: 100%; height: 180px; object-fit: cover; border-radius: 6px; margin-bottom: 1rem; }
-.lp-prod-price { font-size: 1.15rem; font-weight: 700; color: var(--primary); margin: 0.5rem 0; }
+
+/* Grid Katalog Produk (Desktop: Tepat 3 Kolom) */
+.lp-prod-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1.25rem;
+}
+
+@media (min-width: 640px) {
+  .lp-prod-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (min-width: 860px) {
+  .lp-prod-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+/* Card Produk Sejajar */
+.lp-prod-card {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1.25rem;
+  background: #ffffff;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  height: 100%;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.lp-prod-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 8px 16px rgba(0,0,0,0.06);
+}
+
+.lp-prod-img { width: 100%; height: 180px; object-fit: cover; border-radius: 6px; margin-bottom: 0.75rem; }
+.lp-prod-img-placeholder { width: 100%; height: 180px; background: #f1f5f9; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 3rem; margin-bottom: 0.75rem; }
+.lp-prod-title { font-size: 1.1rem; font-weight: 700; color: #0f172a; margin-bottom: 0.25rem; }
+.lp-prod-price { font-size: 1.15rem; font-weight: 800; color: var(--primary); margin-bottom: 0.5rem; }
+
+/* Excerpt Clamped 2 Baris Sejajar */
+.lp-prod-excerpt {
+  font-size: 0.875rem;
+  color: var(--text-muted);
+  margin-bottom: 1rem;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  line-height: 1.4;
+  height: 2.8em; /* Menjamin ketinggian deskripsi sama rata */
+}
+
+.lp-prod-actions {
+  display: grid;
+  grid-template-columns: 1fr 1.3fr;
+  gap: 0.5rem;
+  margin-top: auto;
+}
+
+/* Floating Cart Button */
+.floating-cart-btn {
+  position: fixed;
+  bottom: 2rem;
+  right: 2rem;
+  z-index: 999;
+  background: var(--primary);
+  color: white;
+  border: none;
+  border-radius: 50px;
+  padding: 0.85rem 1.4rem;
+  font-size: 1rem;
+  font-weight: 700;
+  box-shadow: 0 8px 20px rgba(37, 99, 235, 0.4);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  transition: transform 0.2s, background 0.2s;
+}
+
+.floating-cart-btn:hover {
+  background: var(--primary-hover);
+  transform: scale(1.05);
+}
+
+/* Cart Item Rows */
+.cart-item-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.6rem 0;
+  border-bottom: 1px dashed var(--border);
+  font-size: 0.9rem;
+}
+
+.cart-qty-ctrl {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  background: #f1f5f9;
+  padding: 2px 6px;
+  border-radius: 6px;
+  margin: 0 0.5rem;
+}
+
+.cart-qty-ctrl button {
+  background: white;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  width: 24px;
+  height: 24px;
+  font-weight: bold;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.btn-remove-item {
+  background: none;
+  border: none;
+  color: #ef4444;
+  font-size: 1.25rem;
+  cursor: pointer;
+}
+
+/* FAQ & Testimoni */
 .lp-faq-item { border: 1px solid var(--border); border-radius: 8px; padding: 1rem; margin-bottom: 0.75rem; background: #fafafa; }
 .lp-faq-q { font-weight: 700; font-size: 1rem; color: #1e293b; margin-bottom: 0.35rem; }
 .lp-faq-a { color: #475569; font-size: 0.9rem; }
